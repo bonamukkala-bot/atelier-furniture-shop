@@ -1,0 +1,57 @@
+{
+  "nav": {
+    "collection": "Collection",
+    "philosophy": "Philosophy",
+    "craftsmanship": "Craftsmanship"
+  },
+  "categorySection": {
+    "browseCategories": "Browse Categories",
+    "shopByCategory": "Shop by Category",
+    "allPieces": "All Pieces"
+  },
+  "collectionSection": {
+    "curatedCatalog": "Curated Catalog",
+    "currentCollection": "The Current Collection"
+  },
+  "productDetail": {
+    "backToCollection": "Back to Collection",
+    "pieceDetails": "Piece details",
+    "category": "Category",
+    "material": "Material",
+    "aboutThisProduct": "About this Product",
+    "dimensions": "Dimensions",
+    "careInstructions": "Care Instructions",
+    "enquireOnWhatsApp": "Enquire on WhatsApp",
+    "backToCurrentCollection": "Back to The Current Collection"
+  },
+  "visitUs": {
+    "findUs": "Find Us",
+    "visitUs": "Visit Us",
+    "showroom": "Showroom",
+    "hours": "Hours",
+    "shopLocation": "Visit our furniture shop in Hyderabad",
+    "hoursMonSat": "Mon–Sat: 10:00 AM – 8:00 PM",
+    "hoursSunday": "Sunday: Closed"
+  },
+  "chat": {
+    "placeholder": "Ask about our furniture...",
+    "send": "Send"
+  },
+  "categories": {
+    "sofaRecliner": "Sofa / Recliner",
+    "diningTableSet": "Dining Table Set",
+    "tvUnit": "TV Unit",
+    "bed": "Bed",
+    "chair": "Chair"
+  },
+  "philosophySection": {
+    "eyebrow": "Our Approach",
+    "title": "The Philosophy of Restraint",
+    "body": "In the atelier, we believe true luxury lies in restraint. We deliberately turn away from fleeting trends to focus on form, function, and materials. Every piece we make is designed to reveal the natural beauty of wood and stone, maintaining a balance of modernity and timelessness."
+  },
+  "craftsmanshipSection": {
+    "eyebrow": "Materials & Method",
+    "title": "Subtle Craftsmanship",
+    "body": "Our workshop respects traditional wood joinery techniques, ensuring structural longevity without visible screws or synthetic bonding agents. By using locally, sustainably sourced timber and partnering with skilled artisans in Hyderabad, we preserve a legacy of fine joinery in every joint."
+  }
+}

@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+
+@import "tailwindcss";
+
+@theme {
+  --color-ivory: #FAF7F2;
+  --color-charcoal: #2B2420;
+  --color-brass: #B8874B;
+  --color-sage: #6B7259;
+  --color-taupe: #E4DDD1;
+  --color-walnut: #4A3728;
+
+  --font-fraunces: "Fraunces", serif;
+  --font-inter: "Inter", sans-serif;
+}
+
+html, body {
+  background-color: var(--color-ivory);
+  color: var(--color-charcoal);
+  font-family: var(--font-inter);
+  scroll-behavior: smooth;
+  margin: 0;
+  padding: 0;
+}
+
+::selection {
+  background-color: var(--color-brass);
+  color: var(--color-ivory);
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #FAF7F2 0%, #F7F3EC 40%, #FAF7F2 100%);
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes skeletonPulse {
+  0%, 100% {
+    background-position: 200% 0;
+  }
+  50% {
+    background-position: -20% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none;
+    background: #FBF8F3;
+  }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:focus-visible {
+  outline: 3px solid rgba(184, 135, 75, 0.9);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="button"]:focus-visible,
+[role="link"]:focus-visible,
+[tabindex="0"]:focus-visible {
+  outline: 3px solid rgba(184, 135, 75, 0.9);
+  outline-offset: 2px;
+}
+
+/* Shared composition for storefront photography so the same image can be used as a
+   blurred edge-to-edge surface and a full contain layer. The background layer is intentionally
+   not color graded; the foreground layer carries the existing product-image-grade filter. */
+.product-image-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  filter: blur(20px) brightness(0.88) opacity(0.86);
+  transform: scale(1.08);
+}
+
+.product-image-fg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+}
+
+/* Subtle, site-wide grading for storefront product photography.
+   - Slightly increases contrast, saturation and brightness
+   - Adds a very light warm cast via low-opacity sepia + tiny hue-rotate
+   - Applied only to the foreground storefront product image layer via the `.product-image-grade` class
+   - Keep the effect intentionally subtle so it reads as cohesive photography
+*/
+.product-image-grade {
+  filter: contrast(1.05) saturate(1.05) brightness(1.02) sepia(0.06) hue-rotate(-3deg);
+  /* Hint to browsers that this element may change visually (no layout impact) */
+  will-change: filter;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Respect reduced-motion preference — keep grading but avoid any animated transitions */
+  .product-image-grade {
+    will-change: auto;
+  }
+}
