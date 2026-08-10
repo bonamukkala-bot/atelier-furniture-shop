@@ -114,7 +114,7 @@ function LanguageToggle() {
             .map((language, idx) => (
               <button
                 key={language.code}
-                ref={(el) => (optionsRef.current[idx] = el)}
+                ref={(el) => { optionsRef.current[idx] = el }}
                 role="option"
                 aria-selected={false}
                 type="button"
