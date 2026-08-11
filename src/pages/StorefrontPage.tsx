@@ -833,7 +833,12 @@ function StorefrontPage() {
         viewport={{ once: true, amount: 0.18 }}
         className="relative flex flex-col items-center justify-center text-center py-20 sm:py-28 md:py-36 px-4 sm:px-6 overflow-hidden border-b border-[#E4DDD1]"
       >
-        {/* Background Video - only on desktop, respects reduced motion */}
+        {/* Background Video - all viewports, respects reduced motion.
+            Mobile autoplay requires muted + playsInline (iOS plays inline instead
+            of fullscreen); preload="metadata" keeps the cellular-data cost down
+            while still allowing autoplay (never "none", which can stall mobile).
+            The poster attribute shows hero-poster.png while the video loads so
+            there is no blank flash on slow connections. */}
         {!shouldReduceMotion && (
           <video
             src={HERO_VIDEO_SRC}
@@ -842,21 +847,16 @@ function StorefrontPage() {
             muted
             loop
             playsInline
-            className="absolute inset-0 w-full h-full object-cover hidden md:block"
+            preload="metadata"
+            className="absolute inset-0 w-full h-full object-cover"
           />
         )}
-        {/* Fallback poster - shows on mobile or when reduced motion is enabled */}
-        <img
-          src={HERO_POSTER_SRC}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover md:hidden"
-        />
-        {/* Fallback poster for reduced motion (shows on desktop when reduced motion is enabled) */}
+        {/* Fallback poster - shown when reduced motion is enabled, on any viewport */}
         {shouldReduceMotion && (
           <img
             src={HERO_POSTER_SRC}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover hidden md:block"
+            className="absolute inset-0 w-full h-full object-cover"
           />
         )}
 
