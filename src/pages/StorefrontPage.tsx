@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabaseClient'
@@ -484,6 +484,99 @@ function SkeletonCollectionCard({ animate }: { animate: boolean }) {
   )
 }
 
+// Reveal variants shared across the storefront sections.
+const containerVariants = {
+  hidden: {},
+  show: {
+    transition: {
+      staggerChildren: 0.07,
+    },
+  },
+}
+
+// Scroll reveal variants for sections
+const sectionVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.45,
+    },
+  },
+}
+
+// Staggered child reveal variants
+const childVariants = {
+  hidden: { opacity: 0, y: 20 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.45,
+    },
+  },
+}
+
+// Reveal wrapper for the collection grid. Unlike the old whileInView approach,
+// this never depends on an intersection callback firing to reveal content:
+//  - primary: a native IntersectionObserver reveals the grid as it scrolls in
+//    (threshold 0.1 — reachable on every layout: at 375px the grid is ~4200px
+//    tall, so 10% ≈ 420px, which fits in any real viewport),
+//  - fallback: a 250ms interval forces the grid visible as soon as it enters
+//    the viewport, so even a failed/delayed observer cannot leave it hidden,
+//  - reduced-motion users get it visible immediately.
+function CollectionRevealGrid({ children }: { children: ReactNode }) {
+  const shouldReduceMotion = useReducedMotion()
+  const ref = useRef<HTMLDivElement>(null)
+  const [show, setShow] = useState(shouldReduceMotion)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el || shouldReduceMotion || show) return
+
+    let io: IntersectionObserver | null = null
+    if (typeof IntersectionObserver !== 'undefined') {
+      io = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((entry) => entry.isIntersecting)) {
+            setShow(true)
+            io?.disconnect()
+          }
+        },
+        { threshold: 0.1 }
+      )
+      io.observe(el)
+    }
+
+    // Fallback guarantee: if the observer never fires, reveal the grid the
+    // moment it enters the viewport. Content can never stay invisible.
+    const fallback = window.setInterval(() => {
+      if (el.getBoundingClientRect().top < window.innerHeight) {
+        setShow(true)
+        window.clearInterval(fallback)
+      }
+    }, 250)
+
+    return () => {
+      io?.disconnect()
+      window.clearInterval(fallback)
+    }
+  }, [shouldReduceMotion, show])
+
+  return (
+    <motion.div
+      ref={ref}
+      variants={containerVariants}
+      initial={shouldReduceMotion ? false : 'hidden'}
+      animate={show ? 'show' : 'hidden'}
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 md:gap-10"
+    >
+      {children}
+    </motion.div>
+  )
+}
+
 function StorefrontPage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
@@ -601,40 +694,6 @@ function StorefrontPage() {
       : products.filter(
           (p) => p.category && formatCategoryName(p.category) === selectedCategory
         )
-
-  // Stagger variants for entering the viewport
-  const containerVariants = {
-    hidden: {},
-    show: {
-      transition: {
-        staggerChildren: 0.07
-      }
-    }
-  }
-
-  // Scroll reveal variants for sections
-  const sectionVariants = {
-    hidden: { opacity: 0, y: 20 },
-    show: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.45,
-      }
-    }
-  }
-
-  // Staggered child reveal variants
-  const childVariants = {
-    hidden: { opacity: 0, y: 20 },
-    show: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.45,
-      }
-    }
-  }
 
   const shouldReduceMotion = useReducedMotion()
 
@@ -1063,11 +1122,13 @@ function StorefrontPage() {
       </motion.div>
 
       {/* Collection Catalog */}
-      <motion.div
-        variants={sectionVariants}
-        initial={shouldReduceMotion ? undefined : 'hidden'}
-        whileInView={shouldReduceMotion ? undefined : 'show'}
-        viewport={{ once: true, amount: 0.18 }}
+      {/* Plain <div>, deliberately NOT an animated motion.div: this section is very tall
+          on mobile (stacked product cards, ~4400px), so the old whileInView amount:0.18
+          reveal could never trigger (18% of the section can't fit in the viewport) and
+          left the entire section stuck at opacity:0. The reveal animations live on the
+          section header, grid (stagger) and card wrappers below — keep this container
+          fail-safe to visible. */}
+      <div
         className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-24"
         id="collection"
       >
@@ -1113,7 +1174,7 @@ function StorefrontPage() {
             variants={containerVariants}
             initial={shouldReduceMotion ? undefined : 'hidden'}
             whileInView={shouldReduceMotion ? undefined : 'show'}
-            viewport={{ once: true, amount: 0.18 }}
+            viewport={{ once: true, amount: 0.1 }}
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 md:gap-10"
           >
             {Array.from({ length: 8 }).map((_, idx) => (
@@ -1123,21 +1184,15 @@ function StorefrontPage() {
         ) : filteredProducts.length === 0 ? (
           <p className="text-[#6B7259] font-inter text-center py-12 px-4">No products available in this category yet.</p>
         ) : (
-          <motion.div
-            variants={containerVariants}
-            initial={shouldReduceMotion ? undefined : 'hidden'}
-            whileInView={shouldReduceMotion ? undefined : 'show'}
-            viewport={{ once: true, amount: 0.18 }}
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 md:gap-10"
-          >
+          <CollectionRevealGrid>
             {filteredProducts.map((product) => (
-              <motion.div key={product.id} variants={childVariants} initial="hidden" whileInView="show" viewport={{ once: true, amount: 0.12 }}>
+              <motion.div key={product.id} variants={childVariants} initial={false}>
                 <ProductCard product={product} allImages={productImages} />
               </motion.div>
             ))}
-          </motion.div>
+          </CollectionRevealGrid>
         )}
-      </motion.div>
+      </div>
 
       {/* Philosophy Section */}
       <motion.section
