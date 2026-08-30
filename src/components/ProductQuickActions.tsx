@@ -10,7 +10,7 @@ interface ProductQuickActionsProps {
 }
 
 function formatPrice(price: number): string {
-  return Number(price).toLocaleString('en-IN')
+  return Math.round(Number(price)).toLocaleString('en-IN')
 }
 
 function ProductQuickActions({ product, phone, compact = false, contactActions = true }: ProductQuickActionsProps) {

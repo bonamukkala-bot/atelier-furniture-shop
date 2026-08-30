@@ -9,7 +9,7 @@ import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
 
 function formatPrice(price: number): string {
-  return Number(price).toLocaleString('en-IN')
+  return Math.round(Number(price)).toLocaleString('en-IN')
 }
 
 interface DimensionRow {
@@ -111,6 +111,9 @@ function ProductDetailPage() {
 
   const shouldReduceMotion = useReducedMotion()
   const hasDiscount = Boolean(product?.compare_at_price && product.compare_at_price > product.price)
+  const discountPercent = hasDiscount && product?.compare_at_price
+    ? Math.round(((product.compare_at_price - product.price) / product.compare_at_price) * 100)
+    : 0
   // Same value shape and primary-image fallback used in the storefront card.
   const currentImageUrl = images[currentImageIndex] || product?.image_url
 
@@ -292,6 +295,11 @@ function ProductDetailPage() {
             <div className="flex items-baseline gap-3 pb-7 border-b border-[#E4DDD1]">
               {hasDiscount && <span className="font-inter text-base text-[#6B7259] line-through">₹{formatPrice(product.compare_at_price!)}</span>}
               <span className="font-inter text-xl font-semibold text-[#4A3728]">₹{formatPrice(product.price)}</span>
+              {hasDiscount && (
+                <span className="rounded-sm bg-[#B8874B] px-2 py-0.5 font-inter text-[10px] font-bold uppercase tracking-wider text-[#FAF7F2]">
+                  {discountPercent}% OFF
+                </span>
+              )}
             </div>
 
             <div className="py-7 border-b border-[#E4DDD1]">

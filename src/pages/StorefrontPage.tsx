@@ -49,7 +49,7 @@ function getCategoryDisplayName(category: string, t: (key: string) => string): s
 
 // Helper function to format prices for Indian numbering system (e.g. ₹12,999)
 function formatPrice(price: number): string {
-  return Number(price).toLocaleString('en-IN')
+  return Math.round(Number(price)).toLocaleString('en-IN')
 }
 
 // SVG for the all-categories navigation item
@@ -406,7 +406,7 @@ function ProductCard({ product, allImages }: ProductCardProps) {
               <span className="font-inter text-xs font-bold tracking-wider text-[#4A3728]">
                 ₹{formatPrice(product.price)}
               </span>
-              <span className="mt-1 px-1.5 py-0.5 text-[8px] font-bold tracking-wider uppercase bg-[#6B7259] text-white rounded-none">
+              <span className="mt-1 px-1.5 py-0.5 text-[8px] font-bold tracking-wider uppercase bg-[#B8874B] text-[#FAF7F2] rounded-none">
                 {discountPercent}% OFF
               </span>
             </div>
@@ -588,6 +588,36 @@ function StorefrontPage() {
   const [productImages, setProductImages] = useState<Record<string, string[]>>({})
   const [categoryPreviews, setCategoryPreviews] = useState<CategoryPreview[]>([])
   const [isMobile, setIsMobile] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target as Node)) {
+        setMobileMenuOpen(false)
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [mobileMenuOpen])
+
+  const handleMobileNavClick = (targetId: string) => {
+    setMobileMenuOpen(false)
+    document.getElementById(targetId)?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+  }
 
   const MIN_SKELETON_DURATION_MS = 400
   const waitMinimumSkeleton = async (startedAt: number) => {
@@ -710,39 +740,8 @@ function StorefrontPage() {
 
   return (
     <div className="min-h-screen bg-[#FAF7F2] text-[#2B2420] selection:bg-[#B8874B] selection:text-[#FAF7F2]">
-      {/* Slim Trust Bar */}
-      <div className="bg-[#FAF7F2] border-b border-[#E4DDD1] py-2 px-4 sm:px-6 font-inter text-[10px] sm:text-xs font-semibold text-[#4A3728]">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-center sm:justify-between items-center gap-y-2 sm:gap-y-0 gap-x-4 sm:gap-x-6 text-center">
-          {/* Phone */}
-          <div className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5 text-[#B8874B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.122-4.1-6.924-6.924l1.293-.97a1.173 1.173 0 00.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-            </svg>
-            <span className="break-all">{CONTACT_PHONE}</span>
-          </div>
-          
-          {/* Location */}
-          <div className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5 text-[#B8874B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-            </svg>
-            <span className="hidden sm:inline">{SHOP_LOCATION_TEXT}</span>
-            <span className="sm:hidden">Hyderabad</span>
-          </div>
-
-          {/* Handcrafted info */}
-          <div className="flex items-center gap-1.5">
-            <svg className="w-3.5 h-3.5 text-[#B8874B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>Handcrafted, quality furniture</span>
-          </div>
-        </div>
-      </div>
-
       {/* Premium Header - Admin access button removed */}
-      <header className="sticky top-0 z-50 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E4DDD1] py-4 sm:py-5 px-4 sm:px-8 flex justify-between items-center">
+      <header className="sticky top-0 z-50 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E4DDD1] py-4 sm:py-5 px-4 sm:px-8 flex justify-between items-center" ref={mobileMenuRef}>
         <div className="flex flex-col">
           <span className="font-fraunces text-xl sm:text-2xl font-semibold tracking-tight text-[#2B2420]">ATELIER</span>
           <span className="text-[9px] sm:text-[10px] tracking-widest text-[#B8874B] font-inter uppercase">Fine Furniture</span>
@@ -757,7 +756,7 @@ function StorefrontPage() {
             }}
             className="hover:text-[#B8874B] transition-colors py-2 relative group"
           >
-            <span className="relative z-10">{t('nav.collection')}</span>
+            <span className="relative z-10">Shop</span>
             <motion.span
               className="absolute bottom-0 left-0 h-px bg-[#B8874B] w-0 group-hover:w-full transition-all duration-300 ease-out"
               initial={false}
@@ -766,14 +765,14 @@ function StorefrontPage() {
             />
           </a>
           <a
-            href="#philosophy"
+            href="#about-us"
             onClick={(e) => {
               e.preventDefault()
-              document.getElementById('philosophy')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+              document.getElementById('about-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
             }}
             className="hover:text-[#B8874B] transition-colors py-2 relative group"
           >
-            <span className="relative z-10">{t('nav.philosophy')}</span>
+            <span className="relative z-10">About Us</span>
             <motion.span
               className="absolute bottom-0 left-0 h-px bg-[#B8874B] w-0 group-hover:w-full transition-all duration-300 ease-out"
               initial={false}
@@ -782,14 +781,14 @@ function StorefrontPage() {
             />
           </a>
           <a
-            href="#craftsmanship"
+            href="#visit-us"
             onClick={(e) => {
               e.preventDefault()
-              document.getElementById('craftsmanship')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+              document.getElementById('visit-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
             }}
             className="hover:text-[#B8874B] transition-colors py-2 relative group"
           >
-            <span className="relative z-10">{t('nav.craftsmanship')}</span>
+            <span className="relative z-10">Contact Us</span>
             <motion.span
               className="absolute bottom-0 left-0 h-px bg-[#B8874B] w-0 group-hover:w-full transition-all duration-300 ease-out"
               initial={false}
@@ -798,31 +797,64 @@ function StorefrontPage() {
             />
           </a>
           </nav>
-          <a
-            href={`tel:${CONTACT_PHONE}`}
-            className="inline-flex items-center gap-2 rounded-full border border-[#E4DDD1] bg-[#FAF7F2] px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.24em] text-[#2B2420] shadow-[0_2px_8px_rgba(43,36,32,0.06)] transition-colors duration-200 hover:border-[#B8874B] hover:text-[#B8874B] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B8874B] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FAF7F2]"
-          >
-            <svg className="h-3.5 w-3.5 text-[#B8874B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.122-4.1-6.924-6.924l1.293-.97a1.173 1.173 0 00.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-            </svg>
-            <span>{CONTACT_PHONE}</span>
-          </a>
           <LanguageToggle />
         </div>
-        {/* Mobile compact controls: phone + language */}
+        {/* Mobile controls */}
         <div className="flex items-center gap-2 md:hidden">
-          <a
-            href={`tel:${CONTACT_PHONE}`}
-            className="inline-flex items-center gap-2 rounded-full border border-[#E4DDD1] bg-[#FAF7F2] px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-[#2B2420] shadow-[0_2px_8px_rgba(43,36,32,0.06)] transition-colors duration-200 hover:border-[#B8874B] hover:text-[#B8874B] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B8874B] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FAF7F2]"
-          >
-            <svg className="h-3 w-3 text-[#B8874B]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.122-4.1-6.924-6.924l1.293-.97a1.173 1.173 0 00.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-            </svg>
-            <span className="text-sm">{CONTACT_PHONE}</span>
-          </a>
           <LanguageToggle />
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={mobileMenuOpen}
+            className="inline-flex items-center justify-center p-2 rounded border border-[#E4DDD1] bg-[#FAF7F2] text-[#2B2420] hover:text-[#B8874B] hover:border-[#B8874B] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B8874B] transition-colors"
+          >
+            {mobileMenuOpen ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            )}
+          </button>
         </div>
-        <div className="w-12 sm:w-16 hidden md:block"></div>
+
+        {/* Mobile slide-down navigation drawer */}
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={shouldReduceMotion ? { opacity: 1 } : { opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="absolute top-full left-0 right-0 bg-[#FAF7F2] border-b border-[#E4DDD1] shadow-lg md:hidden z-50 px-6 py-4 flex flex-col space-y-2"
+            >
+              <button
+                type="button"
+                onClick={() => handleMobileNavClick('collection')}
+                className="text-left font-inter text-xs uppercase tracking-widest font-semibold text-[#6B7259] hover:text-[#B8874B] transition-colors py-2 border-b border-[#E4DDD1]/50"
+              >
+                Shop
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMobileNavClick('about-us')}
+                className="text-left font-inter text-xs uppercase tracking-widest font-semibold text-[#6B7259] hover:text-[#B8874B] transition-colors py-2 border-b border-[#E4DDD1]/50"
+              >
+                About Us
+              </button>
+              <button
+                type="button"
+                onClick={() => handleMobileNavClick('visit-us')}
+                className="text-left font-inter text-xs uppercase tracking-widest font-semibold text-[#6B7259] hover:text-[#B8874B] transition-colors py-2"
+              >
+                Contact Us
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* Redesigned Hero Section */}
@@ -1129,7 +1161,7 @@ function StorefrontPage() {
           section header, grid (stagger) and card wrappers below — keep this container
           fail-safe to visible. */}
       <div
-        className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-24"
+        className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-24 scroll-mt-20"
         id="collection"
       >
         {/* Section Header */}
@@ -1194,9 +1226,9 @@ function StorefrontPage() {
         )}
       </div>
 
-      {/* Philosophy Section */}
+      {/* About Us Section (Merged Philosophy & Craftsmanship) */}
       <motion.section
-        id="philosophy"
+        id="about-us"
         variants={sectionVariants}
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
@@ -1205,64 +1237,72 @@ function StorefrontPage() {
       >
         {/* Subtle gradient transition at top */}
         <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-[#FAF7F2] to-white opacity-50 pointer-events-none" />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <motion.div
             variants={containerVariants}
             initial="hidden"
             whileInView="show"
             viewport={{ once: true, margin: "-50px" }}
+            className="text-center mb-12 sm:mb-16"
           >
             <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-3 block font-inter">
-              {t('philosophySection.eyebrow')}
+              About Us
             </motion.span>
-            <motion.h2 variants={childVariants} className="text-2xl sm:text-3xl md:text-4xl font-fraunces font-light text-[#2B2420] mb-6">
-              {t('philosophySection.title')}
+            <motion.h2 variants={childVariants} className="text-2xl sm:text-3xl md:text-4xl font-fraunces font-light text-[#2B2420]">
+              Our Heritage & Process
             </motion.h2>
-            <motion.p variants={childVariants} className="text-xs sm:text-sm md:text-base text-[#6B7259] font-inter leading-relaxed max-w-2xl mx-auto px-2">
-              {t('philosophySection.body')}
-            </motion.p>
           </motion.div>
-        </div>
-      </motion.section>
 
-      {/* Craftsmanship Section */}
-      <motion.section
-        id="craftsmanship"
-        variants={sectionVariants}
-        initial={shouldReduceMotion ? undefined : 'hidden'}
-        whileInView={shouldReduceMotion ? undefined : 'show'}
-        viewport={{ once: true, amount: 0.18 }}
-        className="py-16 sm:py-24 bg-[#FAF7F2] border-b border-[#E4DDD1] scroll-mt-20 relative"
-      >
-        {/* Subtle gradient transition at top */}
-        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-white to-[#FAF7F2] opacity-50 pointer-events-none" />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: "-50px" }}
-          >
-            <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-3 block font-inter">
-              {t('craftsmanshipSection.eyebrow')}
-            </motion.span>
-            <motion.h2 variants={childVariants} className="text-2xl sm:text-3xl md:text-4xl font-fraunces font-light text-[#2B2420] mb-6">
-              {t('craftsmanshipSection.title')}
-            </motion.h2>
-            <motion.p variants={childVariants} className="text-xs sm:text-sm md:text-base text-[#6B7259] font-inter leading-relaxed max-w-2xl mx-auto px-2">
-              {t('craftsmanshipSection.body')}
-            </motion.p>
-          </motion.div>
+          <div className="grid md:grid-cols-2 gap-10 sm:gap-12 lg:gap-16">
+            {/* Philosophy Block */}
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-50px" }}
+              className="text-center md:text-left flex flex-col justify-start"
+            >
+              <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-3 block font-inter">
+                {t('philosophySection.eyebrow')}
+              </motion.span>
+              <motion.h3 variants={childVariants} className="text-xl sm:text-2xl md:text-3xl font-fraunces font-light text-[#2B2420] mb-4 sm:mb-6">
+                {t('philosophySection.title')}
+              </motion.h3>
+              <motion.p variants={childVariants} className="text-xs sm:text-sm md:text-base text-[#6B7259] font-inter leading-relaxed">
+                {t('philosophySection.body')}
+              </motion.p>
+            </motion.div>
+
+            {/* Craftsmanship Block */}
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="show"
+              viewport={{ once: true, margin: "-50px" }}
+              className="text-center md:text-left flex flex-col justify-start"
+            >
+              <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-3 block font-inter">
+                {t('craftsmanshipSection.eyebrow')}
+              </motion.span>
+              <motion.h3 variants={childVariants} className="text-xl sm:text-2xl md:text-3xl font-fraunces font-light text-[#2B2420] mb-4 sm:mb-6">
+                {t('craftsmanshipSection.title')}
+              </motion.h3>
+              <motion.p variants={childVariants} className="text-xs sm:text-sm md:text-base text-[#6B7259] font-inter leading-relaxed">
+                {t('craftsmanshipSection.body')}
+              </motion.p>
+            </motion.div>
+          </div>
         </div>
       </motion.section>
 
       {/* Visit Us Section */}
       <motion.section
+        id="visit-us"
         variants={sectionVariants}
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
         viewport={{ once: true, amount: 0.18 }}
-        className="py-16 sm:py-24 bg-white border-b border-[#E4DDD1]"
+        className="py-16 sm:py-24 bg-white border-b border-[#E4DDD1] scroll-mt-20"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <motion.div
@@ -1350,6 +1390,22 @@ function StorefrontPage() {
       </motion.footer>
       
       <ChatWidget />
+
+      {/* Floating WhatsApp Button */}
+      <motion.a
+        href={`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label="Chat with us on WhatsApp"
+        title="Chat on WhatsApp"
+        whileHover={!shouldReduceMotion ? { scale: 1.05 } : undefined}
+        whileTap={!shouldReduceMotion ? { scale: 0.95 } : undefined}
+        className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-40 w-14 h-14 bg-[#25D366] hover:bg-[#20ba59] text-white rounded-full shadow-lg flex items-center justify-center transition-colors duration-300 border border-white/20"
+      >
+        <svg className="w-7 h-7 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m-3.53 3.42c-.19 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.87 1.21 3.07c.15.2 2.06 3.28 5.08 4.49.72.29 1.28.46 1.72.6.72.23 1.38.2 1.9.12.58-.08 1.79-.73 2.04-1.44.26-.71.26-1.32.18-1.44-.08-.13-.27-.2-.56-.35-.3-.15-1.78-.88-2.06-.98-.28-.1-.48-.15-.69.15-.2.3-.79.98-.97 1.18-.18.2-.36.22-.65.07-.3-.15-1.25-.46-2.38-1.47-.88-.78-1.47-1.75-1.64-2.05-.18-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.69-1.66-.94-2.28-.25-.59-.51-.51-.69-.52l-.59-.01z" />
+        </svg>
+      </motion.a>
     </div>
   )
 }

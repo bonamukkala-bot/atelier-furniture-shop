@@ -60,3 +60,36 @@ export interface NewProduct {
   sold: boolean
   image_url: string | null
 }
+
+export interface Worker {
+  id: string
+  name: string
+  phone: string | null
+  monthly_salary: number
+  created_at: string
+}
+
+export interface NewWorker {
+  name: string
+  phone: string | null
+  monthly_salary: number
+}
+
+export interface Attendance {
+  id: string
+  worker_id: string
+  month: number
+  year: number
+  days_present: number
+  agreed_working_days: number
+  created_at: string
+}
+
+export interface NewAttendance {
+  worker_id: string
+  month: number
+  year: number
+  days_present: number
+  agreed_working_days: number
+}
+

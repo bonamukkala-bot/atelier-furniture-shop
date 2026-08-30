@@ -7,12 +7,23 @@ import ProductList from '../components/ProductList'
 import OrderForm from '../components/OrderForm'
 import OrderList from '../components/OrderList'
 import Customers from '../components/Customers'
+import WorkerForm from '../components/WorkerForm'
+import WorkerList from '../components/WorkerList'
+import AttendanceForm from '../components/AttendanceForm'
+import PayrollSummary from '../components/PayrollSummary'
 import Settings from '../components/Settings'
 import { ToastProvider, useToast } from '../context/ToastContext'
-import type { Product } from '../lib/types'
+import type { Product, Worker } from '../lib/types'
 
-type ActiveView = 'dashboard' | 'products' | 'orders' | 'customers' | 'settings'
-type DrawerMode = 'product-add' | 'product-edit' | 'order-add' | null
+type ActiveView = 'dashboard' | 'products' | 'orders' | 'customers' | 'workers' | 'settings'
+type DrawerMode =
+  | 'product-add'
+  | 'product-edit'
+  | 'order-add'
+  | 'worker-add'
+  | 'worker-edit'
+  | 'attendance-record'
+  | null
 
 interface DashboardStats {
   totalProducts: number
@@ -58,6 +69,16 @@ const IconCustomers = () => (
     <circle cx="9" cy="7" r="4" />
     <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
     <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+)
+
+const IconWorkers = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    <path d="M6 11l2 2 4-4" />
   </svg>
 )
 
@@ -302,6 +323,11 @@ function AdminDashboardInner() {
   // ── Drawer state (replaces showProductForm / showOrderForm) ──
   const [drawerMode, setDrawerMode] = useState<DrawerMode>(null)
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined)
+  const [editingWorker, setEditingWorker] = useState<Worker | undefined>(undefined)
+  const [workersTab, setWorkersTab] = useState<'workers' | 'payroll'>('workers')
+  const [attendanceWorkerId, setAttendanceWorkerId] = useState<string | undefined>(undefined)
+  const [attendanceMonth, setAttendanceMonth] = useState<number | undefined>(undefined)
+  const [attendanceYear, setAttendanceYear] = useState<number | undefined>(undefined)
 
   // ── Dashboard stats state (read-only supabase queries) ──
   const [stats, setStats] = useState<DashboardStats>({
@@ -321,9 +347,11 @@ function AdminDashboardInner() {
   const [pendingReviewRequests, setPendingReviewRequests] = useState<any[]>([])
   const [reviewRequestsLoading, setReviewRequestsLoading] = useState(true)
 
-  // ── Refresh keys (unchanged) ──
+  // ── Refresh keys ──
   const [productRefreshKey, setProductRefreshKey] = useState(0)
   const [orderRefreshKey, setOrderRefreshKey] = useState(0)
+  const [workerRefreshKey, setWorkerRefreshKey] = useState(0)
+  const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0)
 
   useEffect(() => {
     fetchStats()
@@ -476,9 +504,47 @@ function AdminDashboardInner() {
     showToast('Order recorded successfully.', 'success')
   }
 
+  function handleAddWorker() {
+    setEditingWorker(undefined)
+    setDrawerMode('worker-add')
+  }
+
+  function handleEditWorker(worker: Worker) {
+    setEditingWorker(worker)
+    setDrawerMode('worker-edit')
+  }
+
+  function handleWorkerSuccess() {
+    const wasEditing = drawerMode === 'worker-edit'
+    setDrawerMode(null)
+    setEditingWorker(undefined)
+    setWorkerRefreshKey((prev) => prev + 1)
+    showToast(wasEditing ? 'Worker updated successfully.' : 'Worker added successfully.', 'success')
+  }
+
+  function handleRecordAttendance(workerId?: string, month?: number, year?: number) {
+    setAttendanceWorkerId(workerId)
+    setAttendanceMonth(month)
+    setAttendanceYear(year)
+    setDrawerMode('attendance-record')
+  }
+
+  function handleAttendanceSuccess(msg?: string) {
+    setDrawerMode(null)
+    setAttendanceWorkerId(undefined)
+    setAttendanceMonth(undefined)
+    setAttendanceYear(undefined)
+    setAttendanceRefreshKey((prev) => prev + 1)
+    showToast(msg || 'Attendance recorded successfully.', 'success')
+  }
+
   function closeDrawer() {
     setDrawerMode(null)
     setEditingProduct(undefined)
+    setEditingWorker(undefined)
+    setAttendanceWorkerId(undefined)
+    setAttendanceMonth(undefined)
+    setAttendanceYear(undefined)
   }
 
   function goTo(view: ActiveView) {
@@ -554,6 +620,7 @@ Thank you for supporting our craft. 🙏
     { view: 'products', label: 'Products', icon: <IconProducts /> },
     { view: 'orders', label: 'Orders', icon: <IconOrders /> },
     { view: 'customers', label: 'Customers', icon: <IconCustomers /> },
+    { view: 'workers', label: 'Workers', icon: <IconWorkers /> },
     { view: 'settings', label: 'Settings', icon: <IconSettings /> },
   ]
 
@@ -562,7 +629,15 @@ Thank you for supporting our craft. 🙏
       ? 'Edit Product'
       : drawerMode === 'product-add'
       ? 'Add New Product'
-      : 'Record Order'
+      : drawerMode === 'order-add'
+      ? 'Record Order'
+      : drawerMode === 'worker-edit'
+      ? 'Edit Worker'
+      : drawerMode === 'worker-add'
+      ? 'Add Worker'
+      : drawerMode === 'attendance-record'
+      ? 'Record / Edit Attendance'
+      : ''
 
   return (
     <>
@@ -864,6 +939,22 @@ Thank you for supporting our craft. 🙏
         {drawerMode === 'order-add' && (
           <OrderForm
             onSuccess={handleOrderSuccess}
+            onCancel={closeDrawer}
+          />
+        )}
+        {(drawerMode === 'worker-add' || drawerMode === 'worker-edit') && (
+          <WorkerForm
+            existingWorker={editingWorker}
+            onSuccess={handleWorkerSuccess}
+            onCancel={closeDrawer}
+          />
+        )}
+        {drawerMode === 'attendance-record' && (
+          <AttendanceForm
+            initialWorkerId={attendanceWorkerId}
+            initialMonth={attendanceMonth}
+            initialYear={attendanceYear}
+            onSuccess={handleAttendanceSuccess}
             onCancel={closeDrawer}
           />
         )}
@@ -1310,6 +1401,92 @@ Thank you for supporting our craft. 🙏
 
             {/* ════════ CUSTOMERS ════════ */}
             {activeView === 'customers' && <Customers />}
+
+            {/* ════════ WORKERS & PAYROLL ════════ */}
+            {activeView === 'workers' && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+                  <div>
+                    <h1 className="admin-section-title">Workers & Payroll</h1>
+                    <p className="admin-section-sub">Manage workshop staff, monthly attendance, and payroll calculations.</p>
+                  </div>
+                  {workersTab === 'workers' ? (
+                    <button onClick={handleAddWorker} className="admin-add-btn" style={{ marginBottom: 0 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      Add Worker
+                    </button>
+                  ) : (
+                    <button onClick={() => handleRecordAttendance()} className="admin-add-btn" style={{ marginBottom: 0 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      Record Attendance
+                    </button>
+                  )}
+                </div>
+
+                {/* Sub Tabs: Manage Workers vs Attendance & Payroll */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+                  <button
+                    onClick={() => setWorkersTab('workers')}
+                    style={{
+                      padding: '9px 18px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: workersTab === 'workers' ? '#FAF7F2' : '#6B7259',
+                      background: workersTab === 'workers' ? '#4A3728' : '#fff',
+                      border: '1px solid #E4DDD1',
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      fontFamily: 'Inter, sans-serif',
+                      transition: 'all 0.18s ease',
+                    }}
+                  >
+                    Manage Workers
+                  </button>
+                  <button
+                    onClick={() => setWorkersTab('payroll')}
+                    style={{
+                      padding: '9px 18px',
+                      fontSize: 12,
+                      fontWeight: 600,
+                      letterSpacing: '0.08em',
+                      textTransform: 'uppercase',
+                      color: workersTab === 'payroll' ? '#FAF7F2' : '#6B7259',
+                      background: workersTab === 'payroll' ? '#4A3728' : '#fff',
+                      border: '1px solid #E4DDD1',
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      fontFamily: 'Inter, sans-serif',
+                      transition: 'all 0.18s ease',
+                    }}
+                  >
+                    Attendance & Payroll
+                  </button>
+                </div>
+
+                <div className="admin-content-card" style={{ padding: 0, overflow: 'hidden' }}>
+                  <div style={{ padding: '20px 28px', borderBottom: '1px solid #E4DDD1' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#6B7259', fontFamily: 'Inter, sans-serif' }}>
+                      {workersTab === 'workers' ? 'All Registered Workers' : 'Monthly Attendance & Payroll Summary'}
+                    </span>
+                  </div>
+                  <div style={{ padding: 28 }}>
+                    {workersTab === 'workers' ? (
+                      <WorkerList onEdit={handleEditWorker} refreshKey={workerRefreshKey} />
+                    ) : (
+                      <PayrollSummary onRecordAttendance={handleRecordAttendance} refreshKey={attendanceRefreshKey} />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* ════════ SETTINGS ════════ */}
             {activeView === 'settings' && <Settings />}

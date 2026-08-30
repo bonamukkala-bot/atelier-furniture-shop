@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import type { Product, NewProduct } from '../lib/types'
-import imageCompression from 'browser-image-compression'
+
+const MAX_FILE_SIZE = 15 * 1024 * 1024 // 15MB
 
 interface ProductFormProps {
   existingProduct?: Product
@@ -16,11 +17,18 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
   const [description, setDescription] = useState(existingProduct?.description ?? '')
   const [careInstructions, setCareInstructions] = useState(existingProduct?.care_instructions ?? '')
   const [dimensions, setDimensions] = useState(existingProduct?.dimensions ?? '')
-  const [price, setPrice] = useState(existingProduct?.price?.toString() ?? '')
+  const initialOriginalPrice = existingProduct?.compare_at_price && existingProduct.compare_at_price > existingProduct.price
+    ? existingProduct.compare_at_price.toString()
+    : (existingProduct?.price?.toString() ?? '')
+  const initialDiscountPercent = existingProduct?.compare_at_price && existingProduct.compare_at_price > existingProduct.price
+    ? Math.round(((existingProduct.compare_at_price - existingProduct.price) / existingProduct.compare_at_price) * 100).toString()
+    : ''
+
+  const [price, setPrice] = useState(initialOriginalPrice)
+  const [discountPercent, setDiscountPercent] = useState(initialDiscountPercent)
   const [stockQty, setStockQty] = useState(existingProduct?.stock_qty?.toString() ?? '0')
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
-  const [compressing, setCompressing] = useState(false)
   const [error, setError] = useState('')
   const [existingImages, setExistingImages] = useState<{ id: string; image_url: string; sort_order: number }[]>([])
 
@@ -40,53 +48,32 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
     setExistingImages(data ?? [])
   }
 
-  async function compressImage(file: File): Promise<File> {
-    const options = {
-      maxSizeMB: 0.5,
-      maxWidthOrHeight: 1600,
-      useWebWorker: true,
-    }
-
-    try {
-      const originalSize = file.size / 1024 / 1024 // Convert to MB
-      const compressedFile = await imageCompression(file, options)
-      const compressedSize = compressedFile.size / 1024 / 1024 // Convert to MB
-      
-      console.log(`Compressed image: ${originalSize.toFixed(2)}MB → ${compressedSize.toFixed(2)}MB (${((1 - compressedSize / originalSize) * 100).toFixed(1)}% reduction)`)
-      
-      return compressedFile
-    } catch (error) {
-      console.error('Image compression failed, using original file:', error)
-      return file // Fall back to original file
-    }
-  }
-
   async function uploadImage(file: File): Promise<string> {
-    setCompressing(true)
-    
-    try {
-      const compressedFile = await compressImage(file)
-      const fileExt = compressedFile.name.split('.').pop()
-      const fileName = `${crypto.randomUUID()}.${fileExt}`
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${crypto.randomUUID()}.${fileExt}`
 
-      const { error: uploadError } = await supabase.storage
-        .from('product-images')
-        .upload(fileName, compressedFile)
+    const { error: uploadError } = await supabase.storage
+      .from('product-images')
+      .upload(fileName, file)
 
-      if (uploadError) throw uploadError
+    if (uploadError) throw uploadError
 
-      const { data } = supabase.storage
-        .from('product-images')
-        .getPublicUrl(fileName)
+    const { data } = supabase.storage
+      .from('product-images')
+      .getPublicUrl(fileName)
 
-      return data.publicUrl
-    } finally {
-      setCompressing(false)
-    }
+    return data.publicUrl
   }
 
   function handleImageFilesChange(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files || [])
+    const oversizedFile = files.find((file) => file.size > MAX_FILE_SIZE)
+    if (oversizedFile) {
+      setError('This photo is larger than 15MB — please choose a smaller file')
+      e.target.value = ''
+      return
+    }
+    setError('')
     setImageFiles(files)
   }
 
@@ -107,6 +94,13 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError('')
+
+    const oversizedFile = imageFiles.find((file) => file.size > MAX_FILE_SIZE)
+    if (oversizedFile) {
+      setError('This photo is larger than 15MB — please choose a smaller file')
+      return
+    }
+
     setUploading(true)
 
     try {
@@ -125,6 +119,20 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
         imageUrl = uploadedUrls[0]
       }
 
+      const parsedPrice = parseFloat(price)
+      const parsedDiscount = discountPercent ? parseFloat(discountPercent) : 0
+
+      let finalPrice = Math.round(parsedPrice)
+      let compareAtPrice: number | null = null
+
+      if (!isNaN(parsedDiscount) && parsedDiscount > 0 && parsedDiscount < 100) {
+        compareAtPrice = Math.round(parsedPrice)
+        finalPrice = Math.round(parsedPrice - (parsedPrice * parsedDiscount / 100))
+      } else {
+        compareAtPrice = null
+        finalPrice = Math.round(parsedPrice)
+      }
+
       const productData: NewProduct = {
         name,
         category: category || null,
@@ -132,7 +140,8 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
         description: description || null,
         care_instructions: careInstructions || null,
         dimensions: dimensions || null,
-        price: parseFloat(price),
+        price: finalPrice,
+        compare_at_price: compareAtPrice,
         stock_qty: parseInt(stockQty, 10),
         sold: existingProduct?.sold ?? false,
         image_url: imageUrl,
@@ -225,7 +234,7 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
         <div>
           <label className="block text-xs uppercase tracking-wider text-[#6B7259] font-semibold mb-2">Price (₹)</label>
           <input
@@ -236,6 +245,19 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
             min="0"
             step="0.01"
             className="w-full border border-[#E4DDD1] bg-[#FAF7F2]/50 text-[#2B2420] p-3 text-sm rounded-none focus:outline-none focus:border-[#B8874B] transition-colors"
+          />
+        </div>
+        <div>
+          <label className="block text-xs uppercase tracking-wider text-[#6B7259] font-semibold mb-2">Discount %</label>
+          <input
+            type="number"
+            value={discountPercent}
+            onChange={(e) => setDiscountPercent(e.target.value)}
+            placeholder="e.g. 15"
+            min="0"
+            max="99"
+            step="1"
+            className="w-full border border-[#E4DDD1] bg-[#FAF7F2]/50 text-[#2B2420] p-3 text-sm rounded-none focus:outline-none focus:border-[#B8874B] transition-colors placeholder-[#6B7259]/40"
           />
         </div>
         <div>
@@ -289,22 +311,11 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
-          capture="environment"
           multiple
           onChange={handleImageFilesChange}
           className="w-full border border-[#E4DDD1] bg-[#FAF7F2]/50 text-[#2B2420] p-3 text-sm rounded-none focus:outline-none focus:border-[#B8874B] transition-colors file:mr-4 file:py-1.5 file:px-3 file:border file:border-[#E4DDD1] file:text-xs file:uppercase file:tracking-wider file:font-semibold file:bg-white file:text-[#2B2420] hover:file:bg-[#FAF7F2]"
-          disabled={uploading || compressing}
+          disabled={uploading}
         />
-        
-        {compressing && (
-          <p className="text-xs text-[#6B7259] mt-2 flex items-center gap-2">
-            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Compressing images...
-          </p>
-        )}
         
         {/* New image previews */}
         {imageFiles.length > 0 && (
@@ -379,10 +390,10 @@ function ProductForm({ existingProduct, onSuccess, onCancel }: ProductFormProps)
       <div className="flex gap-3 pt-4 border-t border-[#E4DDD1] flex-col sm:flex-row">
         <button
           type="submit"
-          disabled={uploading || compressing}
+          disabled={uploading}
           className="bg-[#4A3728] hover:bg-[#2B2420] text-[#FAF7F2] px-6 py-3 text-xs uppercase tracking-widest font-semibold rounded-none disabled:opacity-50 transition-colors duration-300 cursor-pointer min-h-[44px]"
         >
-          {compressing ? 'Compressing...' : uploading ? 'Saving...' : existingProduct ? 'Update Product' : 'Add Product'}
+          {uploading ? 'Saving...' : existingProduct ? 'Update Product' : 'Add Product'}
         </button>
         <button
           type="button"

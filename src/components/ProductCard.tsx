@@ -197,7 +197,7 @@ function ProductCard({ product, images, onEdit, onToggleSold, onDelete }: Produc
             fontFamily: 'Inter, sans-serif',
           }}
         >
-          ₹{product.price.toLocaleString('en-IN')}
+          ₹{Math.round(product.price).toLocaleString('en-IN')}
         </p>
 
         <p
