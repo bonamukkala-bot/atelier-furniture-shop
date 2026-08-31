@@ -47,8 +47,6 @@ function PayrollSummary({ onRecordAttendance, onOpenCalendar, refreshKey }: Payr
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const isCurrentMonth = selectedMonth === currentMonthNum && selectedYear === currentYearNum
-
   const yearOptions = useMemo(() => {
     const current = currentDate.getFullYear()
     return [current - 2, current - 1, current, current + 1, current + 2]
