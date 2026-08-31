@@ -66,6 +66,7 @@ export interface Worker {
   name: string
   phone: string | null
   monthly_salary: number
+  joining_date: string
   created_at: string
 }
 
@@ -73,6 +74,15 @@ export interface NewWorker {
   name: string
   phone: string | null
   monthly_salary: number
+  joining_date: string
+}
+
+export interface DailyAttendance {
+  id: string
+  worker_id: string
+  attendance_date: string
+  present: boolean
+  created_at: string
 }
 
 export interface Attendance {
@@ -92,4 +102,5 @@ export interface NewAttendance {
   days_present: number
   agreed_working_days: number
 }
+
 

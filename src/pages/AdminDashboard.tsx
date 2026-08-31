@@ -10,6 +10,7 @@ import Customers from '../components/Customers'
 import WorkerForm from '../components/WorkerForm'
 import WorkerList from '../components/WorkerList'
 import AttendanceForm from '../components/AttendanceForm'
+import AttendanceCalendar from '../components/AttendanceCalendar'
 import PayrollSummary from '../components/PayrollSummary'
 import Settings from '../components/Settings'
 import { ToastProvider, useToast } from '../context/ToastContext'
@@ -23,6 +24,7 @@ type DrawerMode =
   | 'worker-add'
   | 'worker-edit'
   | 'attendance-record'
+  | 'attendance-calendar'
   | null
 
 interface DashboardStats {
@@ -324,6 +326,7 @@ function AdminDashboardInner() {
   const [drawerMode, setDrawerMode] = useState<DrawerMode>(null)
   const [editingProduct, setEditingProduct] = useState<Product | undefined>(undefined)
   const [editingWorker, setEditingWorker] = useState<Worker | undefined>(undefined)
+  const [calendarWorker, setCalendarWorker] = useState<Worker | undefined>(undefined)
   const [workersTab, setWorkersTab] = useState<'workers' | 'payroll'>('workers')
   const [attendanceWorkerId, setAttendanceWorkerId] = useState<string | undefined>(undefined)
   const [attendanceMonth, setAttendanceMonth] = useState<number | undefined>(undefined)
@@ -529,6 +532,11 @@ function AdminDashboardInner() {
     setDrawerMode('attendance-record')
   }
 
+  function handleOpenCalendar(worker: Worker) {
+    setCalendarWorker(worker)
+    setDrawerMode('attendance-calendar')
+  }
+
   function handleAttendanceSuccess(msg?: string) {
     setDrawerMode(null)
     setAttendanceWorkerId(undefined)
@@ -542,6 +550,7 @@ function AdminDashboardInner() {
     setDrawerMode(null)
     setEditingProduct(undefined)
     setEditingWorker(undefined)
+    setCalendarWorker(undefined)
     setAttendanceWorkerId(undefined)
     setAttendanceMonth(undefined)
     setAttendanceYear(undefined)
@@ -636,7 +645,9 @@ Thank you for supporting our craft. 🙏
       : drawerMode === 'worker-add'
       ? 'Add Worker'
       : drawerMode === 'attendance-record'
-      ? 'Record / Edit Attendance'
+      ? 'Set Agreed Working Days'
+      : drawerMode === 'attendance-calendar'
+      ? calendarWorker ? `Daily Attendance: ${calendarWorker.name}` : 'Daily Attendance'
       : ''
 
   return (
@@ -956,6 +967,12 @@ Thank you for supporting our craft. 🙏
             initialYear={attendanceYear}
             onSuccess={handleAttendanceSuccess}
             onCancel={closeDrawer}
+          />
+        )}
+        {drawerMode === 'attendance-calendar' && calendarWorker && (
+          <AttendanceCalendar
+            worker={calendarWorker}
+            onAgreedDaysUpdated={() => setAttendanceRefreshKey((prev) => prev + 1)}
           />
         )}
       </SlideOverDrawer>
@@ -1424,7 +1441,7 @@ Thank you for supporting our craft. 🙏
                         <line x1="12" y1="5" x2="12" y2="19" />
                         <line x1="5" y1="12" x2="19" y2="12" />
                       </svg>
-                      Record Attendance
+                      Set Agreed Days
                     </button>
                   )}
                 </div>
@@ -1479,9 +1496,17 @@ Thank you for supporting our craft. 🙏
                   </div>
                   <div style={{ padding: 28 }}>
                     {workersTab === 'workers' ? (
-                      <WorkerList onEdit={handleEditWorker} refreshKey={workerRefreshKey} />
+                      <WorkerList
+                        onEdit={handleEditWorker}
+                        onMarkAttendance={handleOpenCalendar}
+                        refreshKey={workerRefreshKey}
+                      />
                     ) : (
-                      <PayrollSummary onRecordAttendance={handleRecordAttendance} refreshKey={attendanceRefreshKey} />
+                      <PayrollSummary
+                        onRecordAttendance={handleRecordAttendance}
+                        onOpenCalendar={handleOpenCalendar}
+                        refreshKey={attendanceRefreshKey}
+                      />
                     )}
                   </div>
                 </div>

@@ -9,10 +9,14 @@ interface WorkerFormProps {
 }
 
 function WorkerForm({ existingWorker, onSuccess, onCancel }: WorkerFormProps) {
+  const todayStr = new Date().toISOString().split('T')[0]
   const [name, setName] = useState(existingWorker?.name ?? '')
   const [phone, setPhone] = useState(existingWorker?.phone ?? '')
   const [monthlySalary, setMonthlySalary] = useState(
     existingWorker?.monthly_salary?.toString() ?? ''
+  )
+  const [joiningDate, setJoiningDate] = useState(
+    existingWorker?.joining_date ? existingWorker.joining_date.split('T')[0] : todayStr
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -33,6 +37,11 @@ function WorkerForm({ existingWorker, onSuccess, onCancel }: WorkerFormProps) {
       return
     }
 
+    if (!joiningDate) {
+      setError('Joining date is required.')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -40,6 +49,7 @@ function WorkerForm({ existingWorker, onSuccess, onCancel }: WorkerFormProps) {
         name: trimmedName,
         phone: phone.trim() ? phone.trim() : null,
         monthly_salary: Math.round(salaryValue),
+        joining_date: joiningDate,
       }
 
       if (existingWorker) {
@@ -119,6 +129,23 @@ function WorkerForm({ existingWorker, onSuccess, onCancel }: WorkerFormProps) {
         />
       </div>
 
+      {/* Joining Date */}
+      <div>
+        <label className="block text-xs uppercase tracking-wider text-[#6B7259] font-semibold mb-2">
+          Joining Date <span className="text-[#C0523C]">*</span>
+        </label>
+        <input
+          type="date"
+          value={joiningDate}
+          onChange={(e) => setJoiningDate(e.target.value)}
+          required
+          className="w-full border border-[#E4DDD1] bg-[#FAF7F2]/50 text-[#2B2420] p-3 text-sm rounded-none focus:outline-none focus:border-[#B8874B] transition-colors"
+        />
+        <span className="text-[10px] text-[#6B7259] mt-1 block">
+          Daily attendance can only be marked on or after this date.
+        </span>
+      </div>
+
       {/* Actions */}
       <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#E4DDD1]">
         <button
@@ -142,3 +169,4 @@ function WorkerForm({ existingWorker, onSuccess, onCancel }: WorkerFormProps) {
 }
 
 export default WorkerForm
+

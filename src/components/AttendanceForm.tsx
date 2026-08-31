@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import type { Worker, NewAttendance } from '../lib/types'
 import { calculatePayable } from '../lib/payroll'
+import { getPresentDays } from '../lib/dailyPayroll'
 
 interface AttendanceFormProps {
   initialWorkerId?: string
@@ -43,9 +44,9 @@ function AttendanceForm({
   const [selectedWorkerId, setSelectedWorkerId] = useState<string>(initialWorkerId ?? '')
   const [month, setMonth] = useState<number>(defaultMonth)
   const [year, setYear] = useState<number>(defaultYear)
-  const [daysPresent, setDaysPresent] = useState<string>('')
   const [agreedWorkingDays, setAgreedWorkingDays] = useState<string>('26')
   const [existingAttendanceId, setExistingAttendanceId] = useState<string | null>(null)
+  const [liveDailyPresentCount, setLiveDailyPresentCount] = useState<number>(0)
 
   const [loading, setLoading] = useState(false)
   const [fetchingExisting, setFetchingExisting] = useState(false)
@@ -77,33 +78,38 @@ function AttendanceForm({
     loadWorkers()
   }, [])
 
-  // When worker, month, or year changes, check if an attendance record already exists
+  // When worker, month, or year changes, check if an agreed working days record exists and get live daily attendance count
   useEffect(() => {
     if (!selectedWorkerId) return
 
     async function checkExistingRecord() {
       setFetchingExisting(true)
-      const { data, error } = await supabase
-        .from('attendance')
-        .select('*')
-        .eq('worker_id', selectedWorkerId)
-        .eq('month', month)
-        .eq('year', year)
-        .maybeSingle()
+      try {
+        // Fetch existing attendance record
+        const { data } = await supabase
+          .from('attendance')
+          .select('*')
+          .eq('worker_id', selectedWorkerId)
+          .eq('month', month)
+          .eq('year', year)
+          .maybeSingle()
 
-      if (!error && data) {
-        setExistingAttendanceId(data.id)
-        setDaysPresent(data.days_present.toString())
-        setAgreedWorkingDays(data.agreed_working_days.toString())
-      } else {
-        setExistingAttendanceId(null)
-        // Reset to default empty if not already typed
-        if (!existingAttendanceId) {
-          setDaysPresent('')
+        if (data) {
+          setExistingAttendanceId(data.id)
+          setAgreedWorkingDays(data.agreed_working_days.toString())
+        } else {
+          setExistingAttendanceId(null)
           setAgreedWorkingDays('26')
         }
+
+        // Fetch live present days from daily_attendance
+        const presentDays = await getPresentDays(selectedWorkerId, month, year)
+        setLiveDailyPresentCount(presentDays.length)
+      } catch (err) {
+        console.error('Error fetching attendance info:', err)
+      } finally {
+        setFetchingExisting(false)
       }
-      setFetchingExisting(false)
     }
 
     checkExistingRecord()
@@ -117,20 +123,12 @@ function AttendanceForm({
   // Live estimated payable amount
   const estimatedPayable = useMemo(() => {
     if (!selectedWorker) return null
-    const present = parseFloat(daysPresent)
     const agreed = parseFloat(agreedWorkingDays)
-    if (isNaN(present) || isNaN(agreed) || agreed <= 0 || present < 0) {
+    if (isNaN(agreed) || agreed <= 0) {
       return null
     }
-    return calculatePayable(selectedWorker.monthly_salary, agreed, present)
-  }, [selectedWorker, daysPresent, agreedWorkingDays])
-
-  // Soft warning: days present exceeds agreed working days
-  const isOverAgreedDays = useMemo(() => {
-    const present = parseFloat(daysPresent)
-    const agreed = parseFloat(agreedWorkingDays)
-    return !isNaN(present) && !isNaN(agreed) && present > agreed
-  }, [daysPresent, agreedWorkingDays])
+    return calculatePayable(selectedWorker.monthly_salary, agreed, liveDailyPresentCount)
+  }, [selectedWorker, liveDailyPresentCount, agreedWorkingDays])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -138,12 +136,6 @@ function AttendanceForm({
 
     if (!selectedWorkerId) {
       setError('Please select a worker.')
-      return
-    }
-
-    const presentNum = parseFloat(daysPresent)
-    if (isNaN(presentNum) || presentNum < 0) {
-      setError('Days present must be 0 or greater.')
       return
     }
 
@@ -159,7 +151,7 @@ function AttendanceForm({
       worker_id: selectedWorkerId,
       month,
       year,
-      days_present: presentNum,
+      days_present: liveDailyPresentCount,
       agreed_working_days: agreedNum,
     }
 
@@ -168,11 +160,11 @@ function AttendanceForm({
         // Update existing record
         const { error: updateError } = await supabase
           .from('attendance')
-          .update(payload)
+          .update({ agreed_working_days: agreedNum })
           .eq('id', existingAttendanceId)
 
         if (updateError) throw updateError
-        onSuccess('Attendance record updated successfully.')
+        onSuccess('Agreed working days updated successfully.')
       } else {
         // Attempt insert
         const { error: insertError } = await supabase
@@ -184,22 +176,22 @@ function AttendanceForm({
           if (insertError.code === '23505' || insertError.message?.includes('duplicate key')) {
             const { error: fallbackUpdateError } = await supabase
               .from('attendance')
-              .update(payload)
+              .update({ agreed_working_days: agreedNum })
               .eq('worker_id', selectedWorkerId)
               .eq('month', month)
               .eq('year', year)
 
             if (fallbackUpdateError) throw fallbackUpdateError
-            onSuccess('Attendance record updated successfully.')
+            onSuccess('Agreed working days updated successfully.')
           } else {
             throw insertError
           }
         } else {
-          onSuccess('Attendance recorded successfully.')
+          onSuccess('Agreed working days set successfully.')
         }
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save attendance record.')
+      setError(err instanceof Error ? err.message : 'Failed to save agreed working days.')
     } finally {
       setLoading(false)
     }
@@ -215,7 +207,7 @@ function AttendanceForm({
 
       {existingAttendanceId && (
         <div className="bg-[#B8874B]/10 border border-[#B8874B]/30 text-xs text-[#4A3728] p-3 leading-relaxed">
-          An attendance record for <strong>{MONTH_NAMES[month - 1]} {year}</strong> already exists. Submitting will update it.
+          Agreed working days for <strong>{MONTH_NAMES[month - 1]} {year}</strong> are already configured. Submitting will update the setting.
         </div>
       )}
 
@@ -304,33 +296,15 @@ function AttendanceForm({
         </span>
       </div>
 
-      {/* Days Present */}
-      <div>
-        <label className="block text-xs uppercase tracking-wider text-[#6B7259] font-semibold mb-2">
-          Days Present <span className="text-[#C0523C]">*</span>
-        </label>
-        <input
-          type="number"
-          min="0"
-          step="0.5"
-          value={daysPresent}
-          onChange={(e) => setDaysPresent(e.target.value)}
-          placeholder="e.g. 24"
-          required
-          disabled={fetchingExisting}
-          className="w-full border border-[#E4DDD1] bg-[#FAF7F2]/50 text-[#2B2420] p-3 text-sm rounded-none focus:outline-none focus:border-[#B8874B] transition-colors"
-        />
+      {/* Daily Attendance Check-In Summary Info */}
+      <div className="p-3 bg-[#FAF7F2] border border-[#E4DDD1] flex items-center justify-between text-xs">
+        <span className="text-[#6B7259]">
+          Days Present from Daily Check-In:
+        </span>
+        <strong className="text-[#4E7A58] text-sm">
+          {liveDailyPresentCount} {liveDailyPresentCount === 1 ? 'day' : 'days'}
+        </strong>
       </div>
-
-      {/* Soft Warning if Days Present > Agreed Days */}
-      {isOverAgreedDays && (
-        <div className="bg-[#FAF7F2] border border-[#B8874B]/50 p-3 text-xs text-[#4A3728] flex items-center gap-2">
-          <svg className="w-4 h-4 text-[#B8874B] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          <span>Note: Days present ({daysPresent}) exceeds agreed working days ({agreedWorkingDays}). Overtime or extra bonus pay will be applied.</span>
-        </div>
-      )}
 
       {/* Live Estimated Payable Preview Card */}
       {selectedWorker && estimatedPayable !== null && (
@@ -366,7 +340,7 @@ function AttendanceForm({
           disabled={loading || workers.length === 0}
           className="bg-[#B8874B] hover:bg-[#A3743C] text-white px-6 py-2.5 text-xs uppercase tracking-wider font-semibold transition-colors disabled:opacity-50 shadow-sm"
         >
-          {loading ? 'Saving...' : existingAttendanceId ? 'Update Attendance' : 'Save Attendance'}
+          {loading ? 'Saving...' : existingAttendanceId ? 'Update Agreed Days' : 'Save Agreed Days'}
         </button>
       </div>
     </form>
@@ -374,3 +348,4 @@ function AttendanceForm({
 }
 
 export default AttendanceForm
+

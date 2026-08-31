@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 
 interface WorkerListProps {
   onEdit: (worker: Worker) => void
+  onMarkAttendance?: (worker: Worker) => void
   refreshKey: number
 }
 
@@ -139,7 +140,7 @@ function DeleteConfirmModal({ workerName, onConfirm, onCancel }: DeleteConfirmPr
   )
 }
 
-function WorkerList({ onEdit, refreshKey }: WorkerListProps) {
+function WorkerList({ onEdit, onMarkAttendance, refreshKey }: WorkerListProps) {
   const { showToast } = useToast()
   const [workers, setWorkers] = useState<Worker[]>([])
   const [loading, setLoading] = useState(true)
@@ -325,12 +326,12 @@ function WorkerList({ onEdit, refreshKey }: WorkerListProps) {
                   borderBottom: '1px solid #E4DDD1',
                 }}
               >
-                {['Name', 'Phone', 'Monthly Salary', 'Actions'].map((h, idx) => (
+                {['Name', 'Phone', 'Joining Date', 'Monthly Salary', 'Actions'].map((h, idx) => (
                   <th
                     key={h}
                     style={{
                       padding: '11px 16px',
-                      textAlign: idx === 3 ? 'right' : 'left',
+                      textAlign: idx === 4 ? 'right' : 'left',
                       fontSize: 10,
                       fontWeight: 700,
                       letterSpacing: '0.1em',
@@ -363,15 +364,54 @@ function WorkerList({ onEdit, refreshKey }: WorkerListProps) {
                   <td style={{ padding: '14px 16px', color: '#6B7259' }}>
                     {worker.phone || '—'}
                   </td>
+                  <td style={{ padding: '14px 16px', color: '#6B7259', fontSize: 12 }}>
+                    {worker.joining_date ? worker.joining_date.split('T')[0] : '—'}
+                  </td>
                   <td style={{ padding: '14px 16px', fontWeight: 600, color: '#B8874B' }}>
                     ₹{Math.round(worker.monthly_salary).toLocaleString('en-IN')}
                   </td>
                   <td style={{ padding: '14px 16px', textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                    <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      {onMarkAttendance && (
+                        <button
+                          onClick={() => onMarkAttendance(worker)}
+                          title="Open Daily Attendance Calendar"
+                          style={{
+                            padding: '6px 10px',
+                            background: '#4E7A58',
+                            border: 'none',
+                            borderRadius: 2,
+                            color: '#fff',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            letterSpacing: '0.06em',
+                            textTransform: 'uppercase',
+                            cursor: 'pointer',
+                            transition: 'background 0.18s',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = '#436C4D'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = '#4E7A58'
+                          }}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                            <line x1="16" y1="2" x2="16" y2="6" />
+                            <line x1="8" y1="2" x2="8" y2="6" />
+                            <line x1="3" y1="10" x2="21" y2="10" />
+                          </svg>
+                          Daily Check-in
+                        </button>
+                      )}
                       <button
                         onClick={() => onEdit(worker)}
                         style={{
-                          padding: '6px 12px',
+                          padding: '6px 10px',
                           background: '#FAF7F2',
                           border: '1px solid #E4DDD1',
                           borderRadius: 2,
@@ -397,7 +437,7 @@ function WorkerList({ onEdit, refreshKey }: WorkerListProps) {
                       <button
                         onClick={() => setDeletingWorker(worker)}
                         style={{
-                          padding: '6px 12px',
+                          padding: '6px 10px',
                           background: 'rgba(192,82,60,0.06)',
                           border: '1px solid rgba(192,82,60,0.2)',
                           borderRadius: 2,
