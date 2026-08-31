@@ -744,7 +744,7 @@ function StorefrontPage() {
       <header className="sticky top-0 z-50 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E4DDD1] py-4 sm:py-5 px-4 sm:px-8 flex justify-between items-center" ref={mobileMenuRef}>
         <div className="flex flex-col">
           <span className="font-fraunces text-xl sm:text-2xl font-semibold tracking-tight text-[#2B2420]">ATELIER</span>
-          <span className="text-[9px] sm:text-[10px] tracking-widest text-[#B8874B] font-inter uppercase">FINE FURNITURE — TEST</span>
+          <span className="text-[9px] sm:text-[10px] tracking-widest text-[#B8874B] font-inter uppercase">FINE FURNITURE</span>
         </div>
         <div className="hidden md:flex items-center gap-3 lg:gap-4">
           <nav className="flex items-center space-x-5 sm:space-x-6 text-xs font-semibold tracking-wider uppercase text-[#6B7259]">
