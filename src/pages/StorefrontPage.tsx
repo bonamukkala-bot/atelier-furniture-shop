@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabaseClient'
 import type { Product } from '../lib/types'
+import { getOptimizedImageUrl } from '../lib/imageOptimization'
 import ChatWidget from '../components/ChatWidget'
 import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
@@ -287,17 +288,19 @@ function ProductCard({ product, allImages }: ProductCardProps) {
             {currentImageUrl ? (
               <>
                 <img
-                  src={currentImageUrl}
+                  src={getOptimizedImageUrl(currentImageUrl, 800, 75)}
                   alt=""
                   aria-hidden="true"
                   className="product-image-bg"
                   draggable={false}
+                  loading="lazy"
                 />
                 <img
-                  src={currentImageUrl}
+                  src={getOptimizedImageUrl(currentImageUrl, 800, 80)}
                   alt={product.name}
                   className="product-image-fg product-image-grade"
                   draggable={false}
+                  loading="lazy"
                 />
               </>
             ) : (
@@ -1015,15 +1018,17 @@ function StorefrontPage() {
                         {coverImage ? (
                           <>
                             <img
-                              src={coverImage}
+                              src={getOptimizedImageUrl(coverImage, 800, 75)}
                               alt=""
                               aria-hidden="true"
                               className="product-image-bg"
+                              loading="lazy"
                             />
                             <img
-                              src={coverImage}
+                              src={getOptimizedImageUrl(coverImage, 800, 80)}
                               alt={product.name}
                               className="product-image-fg product-image-grade"
+                              loading="lazy"
                             />
                           </>
                         ) : (
@@ -1122,9 +1127,10 @@ function StorefrontPage() {
                           ) : preview ? (
                             <>
                               <img
-                                src={preview.imageUrl}
+                                src={getOptimizedImageUrl(preview.imageUrl, 300, 75)}
                                 alt={`${displayName} furniture`}
                                 className="h-full w-full object-cover product-image-grade"
+                                loading="lazy"
                               />
                               <span aria-hidden="true" className="absolute inset-0 bg-[#2B2420]/15" />
                             </>

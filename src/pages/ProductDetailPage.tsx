@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { supabase } from '../lib/supabaseClient'
 import type { Product } from '../lib/types'
+import { getOptimizedImageUrl } from '../lib/imageOptimization'
 import { CONTACT_PHONE } from './StorefrontPage'
 import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
@@ -234,14 +235,14 @@ function ProductDetailPage() {
                 {currentImageUrl ? (
                   <>
                     <img
-                      src={currentImageUrl}
+                      src={getOptimizedImageUrl(currentImageUrl, 1200, 75)}
                       alt=""
                       aria-hidden="true"
                       className="product-image-bg"
                       draggable={false}
                     />
                     <img
-                      src={currentImageUrl}
+                      src={getOptimizedImageUrl(currentImageUrl, 1200, 80)}
                       alt={`Image of ${product.name}`}
                       className="product-image-fg product-image-grade"
                       draggable={false}
