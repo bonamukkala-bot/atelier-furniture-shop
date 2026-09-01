@@ -5,6 +5,48 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function callGroq(model: string, systemPrompt: string, question: string) {
+  try {
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${Deno.env.get('GROQ_API_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: question },
+        ],
+        max_tokens: 300,
+      }),
+    })
+
+    if (groqResponse.status === 429) {
+      console.error('Groq call failed:', { model, status: 429 })
+      return { ok: false, status: 429 }
+    }
+
+    if (!groqResponse.ok) {
+      console.error('Groq call failed:', { model, status: groqResponse.status })
+      return { ok: false, status: groqResponse.status }
+    }
+
+    const groqData = await groqResponse.json()
+    const content = groqData.choices?.[0]?.message?.content
+    if (!content) {
+      console.error('Groq call failed:', { model, status: groqResponse.status, error: 'No valid content' })
+      return { ok: false, status: groqResponse.status }
+    }
+
+    return { ok: true, answer: content, status: 200 }
+  } catch (err) {
+    console.error('Groq call failed:', { model, error: String(err) })
+    return { ok: false, status: 500 }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -44,35 +86,33 @@ Deno.serve(async (req) => {
 Current products:
 ${productContext || 'No products currently available.'}`
 
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${Deno.env.get('GROQ_API_KEY')}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: question },
-        ],
-        max_tokens: 300,
-      }),
-    })
+    const primaryModel = Deno.env.get('GROQ_MODEL') ?? 'openai/gpt-oss-20b'
+    const fallbackModel = Deno.env.get('GROQ_FALLBACK_MODEL') ?? 'llama-3.3-70b-versatile'
 
-    if (groqResponse.status === 429) {
-  return new Response(
-    JSON.stringify({ answer: "We're getting a lot of questions right now! Please try again in a few seconds, or call/WhatsApp us directly." }),
-    { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  )
-}
+    let result = await callGroq(primaryModel, systemPrompt, question)
 
-const groqData = await groqResponse.json()
-const answer = groqData.choices?.[0]?.message?.content ?? 'Sorry, I could not process that.'
+    // If primary model call fails, attempt one retry with the fallback model
+    if (!result.ok) {
+      result = await callGroq(fallbackModel, systemPrompt, question)
+    }
 
-    return new Response(JSON.stringify({ answer }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    if (result.ok && result.answer) {
+      return new Response(JSON.stringify({ answer: result.answer }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (result.status === 429) {
+      return new Response(
+        JSON.stringify({ answer: "We're getting a lot of questions right now! Please try again in a few seconds, or call/WhatsApp us directly." }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    return new Response(
+      JSON.stringify({ answer: "I'm having trouble answering right now — please message us on WhatsApp or call us directly, and we'll help right away." }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   } catch (err) {
     return new Response(JSON.stringify({ error: String(err) }), {
       status: 500,
