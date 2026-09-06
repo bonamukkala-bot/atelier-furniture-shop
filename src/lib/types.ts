@@ -130,6 +130,14 @@ export interface Attendance {
   created_at: string
 }
 
+export interface NewAttendance {
+  worker_id: string
+  month: number
+  year: number
+  days_present: number
+  agreed_working_days: number
+}
+
 export interface DeliveryZone {
   id: string
   zone_name: string

@@ -333,7 +333,6 @@ export default function OrderTrackingPage() {
               {STEPS.map((step, idx) => {
                 const isCompleted = !isIssue && currentStepIndex > idx
                 const isActive = !isIssue && currentStepIndex === idx
-                const isPending = isIssue || currentStepIndex < idx
 
                 return (
                   <div key={step.key} className="flex flex-col items-center text-center">
