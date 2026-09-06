@@ -362,6 +362,7 @@ function AdminDashboardInner() {
   const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [pendingReviewRequests, setPendingReviewRequests] = useState<any[]>([])
   const [reviewRequestsLoading, setReviewRequestsLoading] = useState(true)
+  const [newEnquiriesCount, setNewEnquiriesCount] = useState(0)
 
   // ── Refresh keys ──
   const [productRefreshKey, setProductRefreshKey] = useState(0)
@@ -372,7 +373,23 @@ function AdminDashboardInner() {
   useEffect(() => {
     fetchStats()
     fetchReviewRequestsData()
-  }, [productRefreshKey, orderRefreshKey])
+    fetchNewEnquiriesCount()
+  }, [productRefreshKey, orderRefreshKey, activeView])
+
+  async function fetchNewEnquiriesCount() {
+    try {
+      const { count, error } = await supabase
+        .from('delivery_enquiries')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'new')
+
+      if (!error && typeof count === 'number') {
+        setNewEnquiriesCount(count)
+      }
+    } catch (err) {
+      console.warn('Could not fetch new delivery enquiries count:', err)
+    }
+  }
 
   // ── Fetch shop_settings and pending review requests ──
   async function fetchReviewRequestsData() {
@@ -640,11 +657,20 @@ Thank you for supporting our craft. 🙏
     }
   }
 
-  const navItems: { view: ActiveView; label: string; icon: React.ReactNode }[] = [
+  const navItems: { view: ActiveView; label: string; icon: React.ReactNode; badge?: number }[] = [
     { view: 'dashboard', label: 'Dashboard', icon: <IconDashboard /> },
     { view: 'products', label: 'Products', icon: <IconProducts /> },
     { view: 'orders', label: 'Orders', icon: <IconOrders /> },
-    ...(deliveryEnabled ? [{ view: 'delivery-enquiries' as ActiveView, label: 'Deliveries', icon: <IconDelivery /> }] : []),
+    ...(deliveryEnabled
+      ? [
+          {
+            view: 'delivery-enquiries' as ActiveView,
+            label: 'Deliveries',
+            icon: <IconDelivery />,
+            badge: newEnquiriesCount,
+          },
+        ]
+      : []),
     { view: 'customers', label: 'Customers', icon: <IconCustomers /> },
     { view: 'workers', label: 'Workers', icon: <IconWorkers /> },
     { view: 'settings', label: 'Settings', icon: <IconSettings /> },
@@ -1078,14 +1104,32 @@ Thank you for supporting our craft. 🙏
             >
               Navigation
             </div>
-            {navItems.map(({ view, label, icon }) => (
+            {navItems.map(({ view, label, icon, badge }) => (
               <button
                 key={view}
                 onClick={() => goTo(view)}
                 className={`admin-nav-item${activeView === view ? ' active' : ''}`}
               >
                 {icon}
-                {label}
+                <span>{label}</span>
+                {badge !== undefined && badge > 0 && (
+                  <span
+                    style={{
+                      marginLeft: 'auto',
+                      background: '#B8874B',
+                      color: '#FAF7F2',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      padding: '1px 6px',
+                      borderRadius: 10,
+                      minWidth: 18,
+                      textAlign: 'center',
+                      lineHeight: '16px',
+                    }}
+                  >
+                    {badge}
+                  </span>
+                )}
               </button>
             ))}
           </nav>
@@ -1482,9 +1526,26 @@ Thank you for supporting our craft. 🙏
                         color: deliveriesTab === 'enquiries' ? '#2B2420' : '#6B7259',
                         cursor: 'pointer',
                         transition: 'all 0.15s ease',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
                       }}
                     >
-                      Customer Enquiries
+                      <span>Customer Enquiries</span>
+                      {newEnquiriesCount > 0 && (
+                        <span
+                          style={{
+                            background: deliveriesTab === 'enquiries' ? '#B8874B' : 'rgba(107,114,89,0.15)',
+                            color: deliveriesTab === 'enquiries' ? '#fff' : '#6B7259',
+                            fontSize: 10,
+                            padding: '1px 6px',
+                            borderRadius: 10,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {newEnquiriesCount}
+                        </span>
+                      )}
                     </button>
                   </div>
 
