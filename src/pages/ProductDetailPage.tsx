@@ -8,6 +8,7 @@ import { getOptimizedImageUrl } from '../lib/imageOptimization'
 import { CONTACT_PHONE } from './StorefrontPage'
 import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
+import DeliveryChecker from '../components/DeliveryChecker'
 
 function formatPrice(price: number): string {
   return Math.round(Number(price)).toLocaleString('en-IN')
@@ -388,6 +389,8 @@ function ProductDetailPage() {
               </button>
               <ProductQuickActions product={product} phone={CONTACT_PHONE} contactActions={false} />
             </div>
+
+            <DeliveryChecker product={product} />
           </div>
         </div>
       </section>

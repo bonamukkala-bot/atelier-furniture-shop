@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage'
 import AdminDashboard from './pages/AdminDashboard'
 import StorefrontPage from './pages/StorefrontPage'
 import ProductDetailPage from './pages/ProductDetailPage'
+import OrderTrackingPage from './pages/OrderTrackingPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import { ToastProvider } from './context/ToastContext'
 
@@ -12,6 +13,7 @@ function App() {
       <Routes>
         <Route path="/" element={<StorefrontPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
+        <Route path="/track/:tracking_token" element={<OrderTrackingPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/admin"

@@ -13,10 +13,12 @@ import AttendanceForm from '../components/AttendanceForm'
 import AttendanceCalendar from '../components/AttendanceCalendar'
 import PayrollSummary from '../components/PayrollSummary'
 import Settings from '../components/Settings'
+import DeliveryEnquiriesList from '../components/DeliveryEnquiriesList'
+import DeliveryOrdersList from '../components/DeliveryOrdersList'
 import { ToastProvider, useToast } from '../context/ToastContext'
 import type { Product, Worker } from '../lib/types'
 
-type ActiveView = 'dashboard' | 'products' | 'orders' | 'customers' | 'workers' | 'settings'
+type ActiveView = 'dashboard' | 'products' | 'orders' | 'delivery-enquiries' | 'customers' | 'workers' | 'settings'
 type DrawerMode =
   | 'product-add'
   | 'product-edit'
@@ -88,6 +90,15 @@ const IconSettings = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3" />
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+)
+
+const IconDelivery = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="3" width="15" height="13" />
+    <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+    <circle cx="5.5" cy="18.5" r="2.5" />
+    <circle cx="18.5" cy="18.5" r="2.5" />
   </svg>
 )
 
@@ -328,6 +339,7 @@ function AdminDashboardInner() {
   const [editingWorker, setEditingWorker] = useState<Worker | undefined>(undefined)
   const [calendarWorker, setCalendarWorker] = useState<Worker | undefined>(undefined)
   const [workersTab, setWorkersTab] = useState<'workers' | 'payroll'>('workers')
+  const [deliveriesTab, setDeliveriesTab] = useState<'orders' | 'enquiries'>('orders')
   const [attendanceWorkerId, setAttendanceWorkerId] = useState<string | undefined>(undefined)
   const [attendanceMonth, setAttendanceMonth] = useState<number | undefined>(undefined)
   const [attendanceYear, setAttendanceYear] = useState<number | undefined>(undefined)
@@ -347,6 +359,7 @@ function AdminDashboardInner() {
 
   // ── Review requests state ──
   const [googlePlaceId, setGooglePlaceId] = useState<string | null>(null)
+  const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [pendingReviewRequests, setPendingReviewRequests] = useState<any[]>([])
   const [reviewRequestsLoading, setReviewRequestsLoading] = useState(true)
 
@@ -374,6 +387,9 @@ function AdminDashboardInner() {
 
     if (!settingsError && settingsData) {
       setGooglePlaceId(settingsData.google_place_id)
+      if (settingsData.delivery_enabled !== undefined && settingsData.delivery_enabled !== null) {
+        setDeliveryEnabled(settingsData.delivery_enabled)
+      }
     }
 
     // Fetch orders where review_requested = false
@@ -628,6 +644,7 @@ Thank you for supporting our craft. 🙏
     { view: 'dashboard', label: 'Dashboard', icon: <IconDashboard /> },
     { view: 'products', label: 'Products', icon: <IconProducts /> },
     { view: 'orders', label: 'Orders', icon: <IconOrders /> },
+    ...(deliveryEnabled ? [{ view: 'delivery-enquiries' as ActiveView, label: 'Deliveries', icon: <IconDelivery /> }] : []),
     { view: 'customers', label: 'Customers', icon: <IconCustomers /> },
     { view: 'workers', label: 'Workers', icon: <IconWorkers /> },
     { view: 'settings', label: 'Settings', icon: <IconSettings /> },
@@ -949,6 +966,7 @@ Thank you for supporting our craft. 🙏
         )}
         {drawerMode === 'order-add' && (
           <OrderForm
+            deliveryEnabled={deliveryEnabled}
             onSuccess={handleOrderSuccess}
             onCancel={closeDrawer}
           />
@@ -1416,6 +1434,71 @@ Thank you for supporting our craft. 🙏
               </div>
             )}
 
+            {/* ════════ DELIVERIES & ENQUIRIES ════════ */}
+            {activeView === 'delivery-enquiries' && deliveryEnabled && (
+              <div>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16, marginBottom: 24 }}>
+                  <div>
+                    <h1 className="admin-section-title">Deliveries</h1>
+                    <p className="admin-section-sub">Manage active delivery orders, tracking, partner dispatch, and customer neighborhood enquiries.</p>
+                  </div>
+                </div>
+
+                <div className="admin-content-card" style={{ padding: 0, overflow: 'hidden' }}>
+                  <div style={{ display: 'flex', borderBottom: '1px solid #E4DDD1' }}>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveriesTab('orders')}
+                      style={{
+                        padding: '16px 24px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        fontFamily: 'Inter, sans-serif',
+                        background: 'none',
+                        border: 'none',
+                        borderBottom: deliveriesTab === 'orders' ? '2px solid #B8874B' : '2px solid transparent',
+                        color: deliveriesTab === 'orders' ? '#2B2420' : '#6B7259',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Delivery Orders
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeliveriesTab('enquiries')}
+                      style={{
+                        padding: '16px 24px',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        fontFamily: 'Inter, sans-serif',
+                        background: 'none',
+                        border: 'none',
+                        borderBottom: deliveriesTab === 'enquiries' ? '2px solid #B8874B' : '2px solid transparent',
+                        color: deliveriesTab === 'enquiries' ? '#2B2420' : '#6B7259',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      Customer Enquiries
+                    </button>
+                  </div>
+
+                  <div style={{ padding: 28 }}>
+                    {deliveriesTab === 'orders' ? (
+                      <DeliveryOrdersList />
+                    ) : (
+                      <DeliveryEnquiriesList />
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ════════ CUSTOMERS ════════ */}
             {activeView === 'customers' && <Customers />}
 
@@ -1514,7 +1597,9 @@ Thank you for supporting our craft. 🙏
             )}
 
             {/* ════════ SETTINGS ════════ */}
-            {activeView === 'settings' && <Settings />}
+            {activeView === 'settings' && (
+              <Settings onDeliveryEnabledChange={setDeliveryEnabled} />
+            )}
           </main>
         </div>
       </div>
