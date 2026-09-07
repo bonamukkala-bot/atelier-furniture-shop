@@ -86,7 +86,7 @@ export default function PartnerDashboardPage() {
 
   function handleLogout() {
     partnerLogout()
-    showToast('Logged out of delivery portal.', 'info')
+    showToast('Logged out of delivery portal.', 'success')
     navigate('/partner-login', { replace: true })
   }
 
