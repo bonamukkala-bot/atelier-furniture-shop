@@ -20,11 +20,14 @@ export interface Order {
   delivery_zone_id?: string | null
   delivery_fee?: number | null
   delivery_status?: string | null
+  delivery_partner_id?: string | null
   delivery_partner_name?: string | null
   delivery_partner_phone?: string | null
   tracking_token?: string | null
   delivery_confirmation_code?: string | null
   delivery_confirmed_via?: 'code' | 'manual' | string | null
+  proof_of_delivery_url?: string | null
+  proof_of_delivery_timestamp?: string | null
   created_at: string
   updated_at?: string | null
 }
@@ -186,4 +189,47 @@ export interface DeliveryEnquiry {
   } | null
 }
 
+export interface DeliveryPartner {
+  id: string
+  name: string
+  phone: string
+  status: 'active' | 'inactive'
+  active_orders_count?: number
+  delivered_orders_count?: number
+  created_at?: string
+  updated_at?: string
+}
 
+export interface PartnerSession {
+  token: string
+  partner: DeliveryPartner
+  expires_at?: string
+}
+
+export interface PartnerOrder {
+  id: string
+  customer_id?: string | null
+  customer_name: string | null
+  customer_phone: string | null
+  product_id?: string | null
+  product_name: string | null
+  product_price?: number | null
+  product_image_url?: string | null
+  quantity: number
+  total: number | null
+  fulfillment_type?: string | null
+  delivery_address: string | null
+  delivery_status: string | null
+  delivery_fee?: number | null
+  delivery_zone_name?: string | null
+  delivery_partner_id?: string | null
+  delivery_partner_name?: string | null
+  delivery_partner_phone?: string | null
+  tracking_token?: string | null
+  delivery_confirmation_code?: string | null
+  delivery_confirmed_via?: string | null
+  proof_of_delivery_url?: string | null
+  proof_of_delivery_timestamp?: string | null
+  created_at: string
+  updated_at?: string | null
+}

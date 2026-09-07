@@ -1,8 +1,10 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useToast } from '../context/ToastContext'
-import type { OrderWithDetails, DeliveryStatusHistory } from '../lib/types'
+import type { OrderWithDetails, DeliveryStatusHistory, DeliveryPartner } from '../lib/types'
+import { adminListDeliveryPartners } from '../lib/partnerAuth'
 import DeliveryConfirmationModal from './DeliveryConfirmationModal'
+import DeliveryPartnerManagerModal from './DeliveryPartnerManagerModal'
 
 const DELIVERY_STATUS_CONFIG: Record<
   string,
@@ -72,6 +74,11 @@ export default function DeliveryOrdersList() {
   const [statusNote, setStatusNote] = useState('')
   const [savingUpdate, setSavingUpdate] = useState(false)
 
+  // ── Delivery Partner Management State ──
+  const [partnerModalOpen, setPartnerModalOpen] = useState(false)
+  const [registeredPartners, setRegisteredPartners] = useState<DeliveryPartner[]>([])
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string>('')
+
   // ── History View Modal State ──
   const [historyOrder, setHistoryOrder] = useState<OrderWithDetails | null>(null)
   const [historyList, setHistoryList] = useState<DeliveryStatusHistory[]>([])
@@ -82,7 +89,17 @@ export default function DeliveryOrdersList() {
 
   useEffect(() => {
     fetchDeliveryOrders()
+    loadRegisteredPartners()
   }, [])
+
+  async function loadRegisteredPartners() {
+    try {
+      const data = await adminListDeliveryPartners()
+      setRegisteredPartners(data || [])
+    } catch (err) {
+      console.warn('Could not load delivery partners list:', err)
+    }
+  }
 
   async function fetchDeliveryOrders() {
     setLoading(true)
@@ -141,7 +158,20 @@ export default function DeliveryOrdersList() {
     setNewStatus(order.delivery_status || 'confirmed')
     setPartnerName(order.delivery_partner_name || '')
     setPartnerPhone(order.delivery_partner_phone || '')
+    setSelectedPartnerId(order.delivery_partner_id || '')
     setStatusNote('')
+
+    // If order has partner name/phone but no partner ID, try to match by phone/name
+    if (!order.delivery_partner_id && (order.delivery_partner_phone || order.delivery_partner_name)) {
+      const matched = registeredPartners.find(
+        (p) =>
+          (order.delivery_partner_phone && p.phone === order.delivery_partner_phone) ||
+          (order.delivery_partner_name && p.name.toLowerCase() === order.delivery_partner_name.toLowerCase())
+      )
+      if (matched) {
+        setSelectedPartnerId(matched.id)
+      }
+    }
   }
 
   function closeEditModal() {
@@ -149,6 +179,19 @@ export default function DeliveryOrdersList() {
     setStatusNote('')
     setPartnerName('')
     setPartnerPhone('')
+    setSelectedPartnerId('')
+  }
+
+  function handlePartnerSelectChange(partnerId: string) {
+    setSelectedPartnerId(partnerId)
+    if (!partnerId) {
+      return
+    }
+    const selected = registeredPartners.find((p) => p.id === partnerId)
+    if (selected) {
+      setPartnerName(selected.name)
+      setPartnerPhone(selected.phone)
+    }
   }
 
   // ── Save Status & Partner Update ──
@@ -162,9 +205,11 @@ export default function DeliveryOrdersList() {
       const trimmedPartnerName = partnerName.trim() || null
       const trimmedPartnerPhone = partnerPhone.trim() || null
       const trimmedNote = statusNote.trim() || null
+      const partnerIdToSave = selectedPartnerId || null
 
       const updatePayload: Record<string, any> = {
         delivery_status: statusToSave,
+        delivery_partner_id: partnerIdToSave,
         delivery_partner_name: trimmedPartnerName,
         delivery_partner_phone: trimmedPartnerPhone,
       }
@@ -383,6 +428,36 @@ export default function DeliveryOrdersList() {
                 </button>
               )
             })}
+
+            {/* Manage Delivery Partners Button */}
+            <button
+              type="button"
+              onClick={() => setPartnerModalOpen(true)}
+              style={{
+                padding: '8px 14px',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '0.04em',
+                fontFamily: 'Inter, sans-serif',
+                background: '#FAF7F2',
+                color: '#4A3728',
+                border: '1px solid #B8874B',
+                borderRadius: 2,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                marginLeft: 'auto',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="3" width="15" height="13" rx="1" />
+                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+                <circle cx="5.5" cy="18.5" r="2.5" />
+                <circle cx="18.5" cy="18.5" r="2.5" />
+              </svg>
+              Manage Partners &amp; PINs ({registeredPartners.length})
+            </button>
           </div>
         </div>
       </div>
@@ -522,6 +597,26 @@ export default function DeliveryOrdersList() {
                           {order.delivery_partner_phone && (
                             <div style={{ fontSize: 11, color: '#6B7259', marginTop: 2 }}>
                               {order.delivery_partner_phone}
+                            </div>
+                          )}
+                          {order.proof_of_delivery_url && (
+                            <div style={{ marginTop: 4 }}>
+                              <a
+                                href={order.proof_of_delivery_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{
+                                  fontSize: 10,
+                                  color: '#384E2E',
+                                  textDecoration: 'underline',
+                                  fontWeight: 600,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 3,
+                                }}
+                              >
+                                📸 Proof Photo
+                              </a>
                             </div>
                           )}
                         </div>
@@ -824,8 +919,66 @@ export default function DeliveryOrdersList() {
                 </p>
               </div>
 
+              {/* Delivery Partner Selection */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6B7259',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                  >
+                    Assign Registered Partner
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setPartnerModalOpen(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#B8874B',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    + Manage Partners &amp; PINs
+                  </button>
+                </div>
+
+                <select
+                  value={selectedPartnerId}
+                  onChange={(e) => handlePartnerSelectChange(e.target.value)}
+                  style={{
+                    width: '100%',
+                    border: '1px solid #E4DDD1',
+                    background: '#FAF7F2',
+                    color: '#2B2420',
+                    padding: '10px 14px',
+                    fontSize: 13,
+                    borderRadius: 2,
+                    fontFamily: 'Inter, sans-serif',
+                    outline: 'none',
+                    marginBottom: 8,
+                  }}
+                >
+                  <option value="">— Select Registered Partner (or type below) —</option>
+                  {registeredPartners.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} ({p.phone}) {p.status === 'inactive' ? '— Inactive' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {/* Delivery Partner Details */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, paddingTop: 4 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label
                     style={{
@@ -1084,6 +1237,13 @@ export default function DeliveryOrdersList() {
         isOpen={Boolean(confirmModalOrder)}
         onClose={() => setConfirmModalOrder(null)}
         onSuccess={fetchDeliveryOrders}
+      />
+
+      {/* ════════ DELIVERY PARTNER MANAGER MODAL ════════ */}
+      <DeliveryPartnerManagerModal
+        isOpen={partnerModalOpen}
+        onClose={() => setPartnerModalOpen(false)}
+        onPartnersUpdated={loadRegisteredPartners}
       />
     </div>
   )

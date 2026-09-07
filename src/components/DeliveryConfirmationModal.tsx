@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useToast } from '../context/ToastContext'
-import type { OrderWithDetails } from '../lib/types'
+import type { OrderWithDetails, PartnerOrder } from '../lib/types'
+import { confirmPartnerDeliveryWithCode, uploadProofOfDeliveryPhoto } from '../lib/partnerAuth'
 
 interface DeliveryConfirmationModalProps {
-  order: OrderWithDetails | null
+  order: (OrderWithDetails | PartnerOrder) | null
   isOpen: boolean
   onClose: () => void
   onSuccess: () => void
+  isPartnerPortal?: boolean
+  sessionToken?: string
 }
 
 export default function DeliveryConfirmationModal({
@@ -15,6 +18,8 @@ export default function DeliveryConfirmationModal({
   isOpen,
   onClose,
   onSuccess,
+  isPartnerPortal = false,
+  sessionToken,
 }: DeliveryConfirmationModalProps) {
   const { showToast } = useToast()
 
@@ -23,6 +28,12 @@ export default function DeliveryConfirmationModal({
   const [isOverriding, setIsOverriding] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [attempts, setAttempts] = useState(0)
+
+  // ── Proof of Delivery Photo State ──
+  const [proofFile, setProofFile] = useState<File | null>(null)
+  const [proofPreviewUrl, setProofPreviewUrl] = useState<string | null>(null)
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   // ── Manual Override Section ──
   const [showOverride, setShowOverride] = useState(false)
@@ -35,14 +46,42 @@ export default function DeliveryConfirmationModal({
       setAttempts(0)
       setShowOverride(false)
       setOverrideReason('')
+      setProofFile(null)
+      setProofPreviewUrl(null)
+      setIsUploadingPhoto(false)
     }
   }, [isOpen, order])
 
   if (!isOpen || !order) return null
 
-  const customerName = order.customers?.name || order.customer_name || 'Customer'
-  const productName = order.products?.name || order.product_name || 'Order Item'
-  const customerPhone = order.customers?.phone || order.customer_phone
+  const customerName =
+    'customers' in order && order.customers?.name
+      ? order.customers.name
+      : order.customer_name || 'Customer'
+  const productName =
+    'products' in order && order.products?.name
+      ? order.products.name
+      : order.product_name || 'Order Item'
+  const customerPhone =
+    'customers' in order && order.customers?.phone
+      ? order.customers.phone
+      : order.customer_phone
+
+  // Handle Photo File Selection
+  function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorMsg('Photo is too large. Please select a photo under 10MB.')
+      return
+    }
+
+    setProofFile(file)
+    const localUrl = URL.createObjectURL(file)
+    setProofPreviewUrl(localUrl)
+    setErrorMsg('')
+  }
 
   // ── Verify Customer 6-Digit Code ──
   async function handleVerifyCode(e: React.FormEvent) {
@@ -55,11 +94,46 @@ export default function DeliveryConfirmationModal({
       return
     }
 
+    // Partner Portal Requirement: Proof of delivery photo is required
+    if (isPartnerPortal && !proofFile) {
+      setErrorMsg('Proof-of-delivery photo is required before completing delivery.')
+      return
+    }
+
     setErrorMsg('')
     setIsVerifying(true)
 
     try {
-      // 1. Fetch current order record from Supabase to verify against stored code
+      let uploadedPhotoUrl: string | undefined = undefined
+
+      if (proofFile) {
+        setIsUploadingPhoto(true)
+        try {
+          uploadedPhotoUrl = await uploadProofOfDeliveryPhoto(proofFile)
+        } catch (uploadErr) {
+          console.warn('Proof photo upload failed:', uploadErr)
+          throw new Error('Failed to upload proof of delivery photo. Please try again.')
+        } finally {
+          setIsUploadingPhoto(false)
+        }
+      }
+
+      // ── Partner Portal Mode: Use Secure Scoped RPC ──
+      if (isPartnerPortal && sessionToken) {
+        await confirmPartnerDeliveryWithCode(
+          sessionToken,
+          order.id,
+          trimmedInput,
+          uploadedPhotoUrl
+        )
+
+        showToast('Delivery verified with customer code & proof photo recorded!', 'success')
+        onSuccess()
+        onClose()
+        return
+      }
+
+      // ── Admin Mode: Direct Database Update ──
       const { data: currentOrder, error: fetchErr } = await supabase
         .from('orders')
         .select('delivery_confirmation_code, delivery_status')
@@ -88,13 +162,19 @@ export default function DeliveryConfirmationModal({
       }
 
       // 2. Code matches! Update order status to 'delivered' with confirmed_via = 'code'
+      const updatePayload: Record<string, any> = {
+        delivery_status: 'delivered',
+        delivery_confirmed_via: 'code',
+        updated_at: new Date().toISOString(),
+      }
+      if (uploadedPhotoUrl) {
+        updatePayload.proof_of_delivery_url = uploadedPhotoUrl
+        updatePayload.proof_of_delivery_timestamp = new Date().toISOString()
+      }
+
       const { error: updateErr } = await supabase
         .from('orders')
-        .update({
-          delivery_status: 'delivered',
-          delivery_confirmed_via: 'code',
-          updated_at: new Date().toISOString(),
-        })
+        .update(updatePayload)
         .eq('id', order.id)
 
       if (updateErr) throw updateErr
@@ -105,7 +185,9 @@ export default function DeliveryConfirmationModal({
         .insert({
           order_id: order.id,
           status: 'delivered',
-          note: 'Delivery confirmed via customer 6-digit code',
+          note: uploadedPhotoUrl
+            ? 'Delivery confirmed via customer 6-digit code with proof photo'
+            : 'Delivery confirmed via customer 6-digit code',
         })
 
       if (histErr) {
@@ -120,6 +202,7 @@ export default function DeliveryConfirmationModal({
       setErrorMsg(err instanceof Error ? err.message : 'Failed to confirm delivery.')
     } finally {
       setIsVerifying(false)
+      setIsUploadingPhoto(false)
     }
   }
 
@@ -309,6 +392,122 @@ export default function DeliveryConfirmationModal({
 
           {/* Form */}
           <form onSubmit={handleVerifyCode}>
+            {/* Proof of Delivery Photo Upload */}
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <label
+                  style={{
+                    display: 'block',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: '#2B2420',
+                  }}
+                >
+                  Proof of Delivery Photo {isPartnerPortal ? <span style={{ color: '#C0523C' }}>* (Required)</span> : <span style={{ color: '#8A8178', fontWeight: 400 }}>(Optional)</span>}
+                </label>
+                {proofPreviewUrl && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProofFile(null)
+                      setProofPreviewUrl(null)
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                    }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#C0523C',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      padding: 0,
+                    }}
+                  >
+                    Retake / Remove
+                  </button>
+                )}
+              </div>
+
+              <p style={{ fontSize: 11, color: '#6B7259', lineHeight: 1.4, margin: '0 0 8px 0' }}>
+                Capture or upload a photo of the furniture item placed at the customer's location.
+              </p>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoSelect}
+                style={{ display: 'none' }}
+                id="pod-photo-input"
+              />
+
+              {!proofPreviewUrl ? (
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    border: '1px dashed #B8874B',
+                    borderRadius: 3,
+                    background: '#FAF7F2',
+                    color: '#4A3728',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    cursor: 'pointer',
+                    transition: 'background 0.2s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#F3ECE0')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#FAF7F2')}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                  📸 Take Photo / Upload Proof
+                </button>
+              ) : (
+                <div
+                  style={{
+                    position: 'relative',
+                    border: '1px solid #E4DDD1',
+                    borderRadius: 3,
+                    overflow: 'hidden',
+                    background: '#2B2420',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    maxHeight: 140,
+                  }}
+                >
+                  <img
+                    src={proofPreviewUrl}
+                    alt="Proof Preview"
+                    style={{ maxHeight: 140, width: '100%', objectFit: 'contain' }}
+                  />
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 6,
+                      right: 6,
+                      background: 'rgba(0,0,0,0.7)',
+                      color: '#FFF',
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      borderRadius: 2,
+                    }}
+                  >
+                    ✓ Ready to upload
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 6-Digit Code Input */}
             <div style={{ marginBottom: 18 }}>
               <label
                 htmlFor="confirmation-code-input"
@@ -320,7 +519,7 @@ export default function DeliveryConfirmationModal({
                   marginBottom: 6,
                 }}
               >
-                Enter Customer's 6-Digit Delivery Code
+                Enter Customer's 6-Digit Delivery Code *
               </label>
 
               <p style={{ fontSize: 11, color: '#6B7259', lineHeight: 1.4, margin: '0 0 10px 0' }}>
@@ -337,7 +536,7 @@ export default function DeliveryConfirmationModal({
                 onChange={(e) => setEnteredCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="• • • • • •"
                 autoFocus
-                disabled={isVerifying}
+                disabled={isVerifying || isUploadingPhoto}
                 style={{
                   width: '100%',
                   textAlign: 'center',
@@ -358,10 +557,21 @@ export default function DeliveryConfirmationModal({
 
             <button
               type="submit"
-              disabled={isVerifying || enteredCode.trim().length !== 6}
+              disabled={
+                isVerifying ||
+                isUploadingPhoto ||
+                enteredCode.trim().length !== 6 ||
+                (isPartnerPortal && !proofFile)
+              }
               style={{
                 width: '100%',
-                background: isVerifying || enteredCode.trim().length !== 6 ? '#9CA3AF' : '#4A5D3E',
+                background:
+                  isVerifying ||
+                  isUploadingPhoto ||
+                  enteredCode.trim().length !== 6 ||
+                  (isPartnerPortal && !proofFile)
+                    ? '#9CA3AF'
+                    : '#4A5D3E',
                 color: '#FFFFFF',
                 border: 'none',
                 padding: '12px 16px',
@@ -369,7 +579,13 @@ export default function DeliveryConfirmationModal({
                 fontSize: 13,
                 fontWeight: 600,
                 letterSpacing: '0.04em',
-                cursor: isVerifying || enteredCode.trim().length !== 6 ? 'not-allowed' : 'pointer',
+                cursor:
+                  isVerifying ||
+                  isUploadingPhoto ||
+                  enteredCode.trim().length !== 6 ||
+                  (isPartnerPortal && !proofFile)
+                    ? 'not-allowed'
+                    : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -377,124 +593,130 @@ export default function DeliveryConfirmationModal({
                 transition: 'background 0.2s',
               }}
             >
-              {isVerifying ? 'Verifying Code...' : 'Verify Code & Confirm Delivery'}
+              {isUploadingPhoto
+                ? 'Uploading Proof Photo...'
+                : isVerifying
+                ? 'Verifying Code...'
+                : 'Verify Code & Confirm Delivery'}
             </button>
           </form>
 
-          {/* ════════ MANUAL OVERRIDE FALLBACK ════════ */}
-          <div
-            style={{
-              marginTop: 20,
-              paddingTop: 16,
-              borderTop: '1px solid #E4DDD1',
-            }}
-          >
-            {!showOverride ? (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 11, color: '#8A8178' }}>
-                  Customer cannot access tracking link?
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowOverride(true)}
+          {/* ════════ MANUAL OVERRIDE FALLBACK (Admin only) ════════ */}
+          {!isPartnerPortal && (
+            <div
+              style={{
+                marginTop: 20,
+                paddingTop: 16,
+                borderTop: '1px solid #E4DDD1',
+              }}
+            >
+              {!showOverride ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 11, color: '#8A8178' }}>
+                    Customer cannot access tracking link?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowOverride(true)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#A84B3B',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                    }}
+                  >
+                    Manual Override
+                  </button>
+                </div>
+              ) : (
+                <div
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#A84B3B',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    padding: 0,
-                    textDecoration: 'underline',
+                    background: '#FAF7F2',
+                    border: '1px solid #E4DDD1',
+                    borderRadius: 3,
+                    padding: 14,
                   }}
                 >
-                  Manual Override
-                </button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  background: '#FAF7F2',
-                  border: '1px solid #E4DDD1',
-                  borderRadius: 3,
-                  padding: 14,
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: '#A84B3B' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                    <line x1="12" y1="9" x2="12" y2="13" />
-                    <line x1="12" y1="17" x2="12.01" y2="17" />
-                  </svg>
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>
-                    Manual Delivery Override
-                  </span>
-                </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: '#A84B3B' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                    <span style={{ fontSize: 12, fontWeight: 700 }}>
+                      Manual Delivery Override
+                    </span>
+                  </div>
 
-                <p style={{ fontSize: 11, color: '#6B7259', lineHeight: 1.45, margin: '0 0 10px 0' }}>
-                  This will mark the order as <strong>Delivered</strong> without code verification. The history log will record this delivery as <em>"Manually confirmed (unverified)"</em>.
-                </p>
+                  <p style={{ fontSize: 11, color: '#6B7259', lineHeight: 1.45, margin: '0 0 10px 0' }}>
+                    This will mark the order as <strong>Delivered</strong> without code verification. The history log will record this delivery as <em>"Manually confirmed (unverified)"</em>.
+                  </p>
 
-                <input
-                  type="text"
-                  value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value)}
-                  placeholder="Optional reason (e.g. Phone battery drained, Offline)"
-                  style={{
-                    width: '100%',
-                    fontSize: 11,
-                    padding: '7px 10px',
-                    borderRadius: 2,
-                    border: '1px solid #E4DDD1',
-                    background: '#FFFFFF',
-                    marginBottom: 10,
-                    boxSizing: 'border-box',
-                  }}
-                />
-
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowOverride(false)}
-                    disabled={isOverriding}
+                  <input
+                    type="text"
+                    value={overrideReason}
+                    onChange={(e) => setOverrideReason(e.target.value)}
+                    placeholder="Optional reason (e.g. Phone battery drained, Offline)"
                     style={{
-                      background: '#FFFFFF',
+                      width: '100%',
+                      fontSize: 11,
+                      padding: '7px 10px',
+                      borderRadius: 2,
                       border: '1px solid #E4DDD1',
-                      color: '#4A3728',
-                      padding: '6px 10px',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      borderRadius: 2,
-                      cursor: 'pointer',
+                      background: '#FFFFFF',
+                      marginBottom: 10,
+                      boxSizing: 'border-box',
                     }}
-                  >
-                    Cancel
-                  </button>
+                  />
 
-                  <button
-                    type="button"
-                    onClick={handleManualOverride}
-                    disabled={isOverriding}
-                    style={{
-                      background: '#A84B3B',
-                      border: 'none',
-                      color: '#FFFFFF',
-                      padding: '6px 12px',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      borderRadius: 2,
-                      cursor: isOverriding ? 'not-allowed' : 'pointer',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                    }}
-                  >
-                    {isOverriding ? 'Saving...' : 'Confirm Manual Delivery'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowOverride(false)}
+                      disabled={isOverriding}
+                      style={{
+                        background: '#FFFFFF',
+                        border: '1px solid #E4DDD1',
+                        color: '#4A3728',
+                        padding: '6px 10px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: 2,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleManualOverride}
+                      disabled={isOverriding}
+                      style={{
+                        background: '#A84B3B',
+                        border: 'none',
+                        color: '#FFFFFF',
+                        padding: '6px 12px',
+                        fontSize: 11,
+                        fontWeight: 600,
+                        borderRadius: 2,
+                        cursor: isOverriding ? 'not-allowed' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                      }}
+                    >
+                      {isOverriding ? 'Saving...' : 'Confirm Manual Delivery'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
