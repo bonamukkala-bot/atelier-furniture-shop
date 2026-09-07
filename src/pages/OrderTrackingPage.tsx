@@ -227,6 +227,7 @@ export default function OrderTrackingPage() {
 
   const currentStatus = (order.delivery_status || 'confirmed').toLowerCase()
   const isIssue = currentStatus === 'issue'
+  const isDelivered = currentStatus === 'delivered'
   const currentStepIndex = isIssue ? -1 : (STATUS_INDEX_MAP[currentStatus] ?? 0)
 
   return (
@@ -323,16 +324,24 @@ export default function OrderTrackingPage() {
 
         {/* ── Step Tracker Card ── */}
         <section className="bg-white border border-[#E4DDD1] p-6 sm:p-8 mb-8 shadow-xs">
-          <h2 className="text-xs uppercase tracking-widest font-semibold text-[#6B7259] mb-8 font-inter">
-            Delivery Progress
-          </h2>
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-xs uppercase tracking-widest font-semibold text-[#6B7259] font-inter">
+              Delivery Progress
+            </h2>
+            {isIssue && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#FEF2F2] text-[#991B1B] border border-[#FECACA]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#DC2626] animate-pulse" />
+                Delivery Paused
+              </span>
+            )}
+          </div>
 
           <div className="relative">
             {/* Steps Container */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-6 relative z-10">
               {STEPS.map((step, idx) => {
-                const isCompleted = !isIssue && currentStepIndex > idx
-                const isActive = !isIssue && currentStepIndex === idx
+                const isCompleted = !isIssue && (isDelivered ? idx <= currentStepIndex : idx < currentStepIndex)
+                const isActive = !isIssue && !isDelivered && currentStepIndex === idx
 
                 return (
                   <div key={step.key} className="flex flex-col items-center text-center">
