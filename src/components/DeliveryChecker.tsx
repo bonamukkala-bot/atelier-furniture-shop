@@ -324,7 +324,7 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
           }
         } catch (err) {
           console.error('Error reverse geocoding location:', err)
-          showToast('Failed to resolve address name, but coordinates captured.', 'info')
+          showToast('Failed to resolve address name, but coordinates captured.', 'error')
         } finally {
           setIsLocating(false)
         }
