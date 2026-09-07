@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useToast } from '../context/ToastContext'
 import type { OrderWithDetails, DeliveryStatusHistory } from '../lib/types'
+import DeliveryConfirmationModal from './DeliveryConfirmationModal'
 
 const DELIVERY_STATUS_CONFIG: Record<
   string,
@@ -75,6 +76,9 @@ export default function DeliveryOrdersList() {
   const [historyOrder, setHistoryOrder] = useState<OrderWithDetails | null>(null)
   const [historyList, setHistoryList] = useState<DeliveryStatusHistory[]>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+
+  // ── Delivery Confirmation Modal State ──
+  const [confirmModalOrder, setConfirmModalOrder] = useState<OrderWithDetails | null>(null)
 
   useEffect(() => {
     fetchDeliveryOrders()
@@ -159,14 +163,22 @@ export default function DeliveryOrdersList() {
       const trimmedPartnerPhone = partnerPhone.trim() || null
       const trimmedNote = statusNote.trim() || null
 
+      const updatePayload: Record<string, any> = {
+        delivery_status: statusToSave,
+        delivery_partner_name: trimmedPartnerName,
+        delivery_partner_phone: trimmedPartnerPhone,
+      }
+
+      // If status is changed to out_for_delivery, generate a 6-digit confirmation code if not already set
+      if (statusToSave === 'out_for_delivery') {
+        const code = editingOrder.delivery_confirmation_code || Math.floor(100000 + Math.random() * 900000).toString()
+        updatePayload.delivery_confirmation_code = code
+      }
+
       // 1. Update the order row in 'orders' table
       const { error: orderUpdateError } = await supabase
         .from('orders')
-        .update({
-          delivery_status: statusToSave,
-          delivery_partner_name: trimmedPartnerName,
-          delivery_partner_phone: trimmedPartnerPhone,
-        })
+        .update(updatePayload)
         .eq('id', editingOrder.id)
 
       if (orderUpdateError) throw orderUpdateError
@@ -526,6 +538,39 @@ export default function DeliveryOrdersList() {
                     {/* Actions */}
                     <td style={{ padding: '14px 16px', verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        {/* Confirm Delivery — Code button (only for out_for_delivery) */}
+                        {order.delivery_status === 'out_for_delivery' && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmModalOrder(order)}
+                            title="Confirm delivery with customer 6-digit code"
+                            style={{
+                              background: '#4A5D3E',
+                              color: '#FFFFFF',
+                              border: 'none',
+                              padding: '6px 12px',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              letterSpacing: '0.04em',
+                              borderRadius: 2,
+                              cursor: 'pointer',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 5,
+                              boxShadow: '0 1px 3px rgba(74, 93, 62, 0.25)',
+                              transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#384E2E')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = '#4A5D3E')}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                              <path d="m9 12 2 2 4-4" />
+                            </svg>
+                            Confirm Delivery (Code)
+                          </button>
+                        )}
+
                         {/* Update Status Button */}
                         <button
                           type="button"
@@ -655,6 +700,53 @@ export default function DeliveryOrdersList() {
             </div>
 
             <form onSubmit={handleSaveStatus} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Delivery Confirmation Prompt if Out for Delivery */}
+              {editingOrder.delivery_status === 'out_for_delivery' && (
+                <div
+                  style={{
+                    background: 'rgba(74, 93, 62, 0.08)',
+                    border: '1px solid rgba(74, 93, 62, 0.3)',
+                    borderRadius: 3,
+                    padding: '10px 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A5D3E" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      <path d="m9 12 2 2 4-4" />
+                    </svg>
+                    <span style={{ fontSize: 11, color: '#384E2E', lineHeight: 1.35 }}>
+                      Order is <strong>Out for Delivery</strong>. Confirm with customer's 6-digit code?
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = editingOrder
+                      closeEditModal()
+                      setConfirmModalOrder(target)
+                    }}
+                    style={{
+                      background: '#4A5D3E',
+                      color: '#FFFFFF',
+                      border: 'none',
+                      padding: '5px 10px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 2,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Verify Code
+                  </button>
+                </div>
+              )}
+
               {/* Status Select */}
               <div>
                 <label
@@ -904,6 +996,9 @@ export default function DeliveryOrdersList() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {historyList.map((hist, i) => {
                   const cfg = DELIVERY_STATUS_CONFIG[hist.status] || DELIVERY_STATUS_CONFIG.confirmed
+                  const isCodeVerified = hist.note?.includes('6-digit code') || hist.note?.includes('Firebase SMS OTP') || hist.note?.includes('code')
+                  const isManualOverride = hist.note?.includes('Manually confirmed')
+
                   return (
                     <div
                       key={hist.id || i}
@@ -915,17 +1010,58 @@ export default function DeliveryOrdersList() {
                       }}
                     >
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-                        <span
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: 10,
-                            fontSize: 10,
-                            fontWeight: 600,
-                            ...cfg.badgeStyle,
-                          }}
-                        >
-                          {cfg.label}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span
+                            style={{
+                              padding: '2px 8px',
+                              borderRadius: 10,
+                              fontSize: 10,
+                              fontWeight: 600,
+                              ...cfg.badgeStyle,
+                            }}
+                          >
+                            {cfg.label}
+                          </span>
+
+                          {isCodeVerified && (
+                            <span
+                              style={{
+                                padding: '2px 6px',
+                                borderRadius: 10,
+                                fontSize: 9,
+                                fontWeight: 700,
+                                background: 'rgba(74, 93, 62, 0.15)',
+                                color: '#384E2E',
+                                border: '1px solid rgba(74, 93, 62, 0.35)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                              }}
+                            >
+                              ✓ Code Verified
+                            </span>
+                          )}
+
+                          {isManualOverride && (
+                            <span
+                              style={{
+                                padding: '2px 6px',
+                                borderRadius: 10,
+                                fontSize: 9,
+                                fontWeight: 700,
+                                background: 'rgba(168, 75, 59, 0.15)',
+                                color: '#A84B3B',
+                                border: '1px solid rgba(168, 75, 59, 0.35)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 3,
+                              }}
+                            >
+                              ⚠️ Manual Override
+                            </span>
+                          )}
+                        </div>
+
                         <span style={{ fontSize: 11, color: '#6B7259' }}>{formatDate(hist.changed_at)}</span>
                       </div>
                       {hist.note && (
@@ -941,6 +1077,14 @@ export default function DeliveryOrdersList() {
           </div>
         </div>
       )}
+
+      {/* ════════ DELIVERY CONFIRMATION MODAL ════════ */}
+      <DeliveryConfirmationModal
+        order={confirmModalOrder}
+        isOpen={Boolean(confirmModalOrder)}
+        onClose={() => setConfirmModalOrder(null)}
+        onSuccess={fetchDeliveryOrders}
+      />
     </div>
   )
 }

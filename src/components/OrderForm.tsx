@@ -265,6 +265,7 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
         delivery_zone_id: fulfillmentType === 'delivery' ? (deliveryZoneId || null) : null,
         delivery_fee: parsedDeliveryFee,
         delivery_status: fulfillmentType === 'delivery' ? 'confirmed' : null,
+        tracking_token: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined,
       }
 
       const { data: createdOrder, error: orderError } = await supabase

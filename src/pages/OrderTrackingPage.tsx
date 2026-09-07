@@ -19,6 +19,8 @@ interface TrackingOrder {
   delivery_partner_name?: string | null
   delivery_partner_phone?: string | null
   tracking_token?: string | null
+  delivery_confirmation_code?: string | null
+  delivery_confirmed_via?: string | null
   created_at?: string
   updated_at?: string | null
 }
@@ -422,6 +424,26 @@ export default function OrderTrackingPage() {
             </div>
           </div>
         </section>
+
+        {/* ── Delivery Confirmation Code (Visible ONLY when Out for Delivery) ── */}
+        {(order.delivery_status || '').toLowerCase().trim() === 'out_for_delivery' && order.delivery_confirmation_code && (
+          <div className="mb-8 p-6 sm:p-8 bg-[#FAF7F2] border-2 border-[#B8874B] text-center shadow-xs">
+            <div className="inline-flex items-center gap-2 bg-[#B8874B]/15 text-[#8F632E] px-3 py-1 text-xs font-semibold uppercase tracking-wider mb-3">
+              <svg className="w-4 h-4 text-[#8F632E]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+              </svg>
+              <span>Delivery Confirmation Code</span>
+            </div>
+
+            <div className="font-mono text-3xl sm:text-4xl font-bold tracking-[0.3em] text-[#2B2420] my-2 select-all">
+              {order.delivery_confirmation_code}
+            </div>
+
+            <p className="text-xs sm:text-sm text-[#6B7259] mt-2 max-w-md mx-auto leading-relaxed">
+              Please share this 6-digit code with the delivery person <strong>only once your order has arrived</strong> and been inspected.
+            </p>
+          </div>
+        )}
 
         {/* ── Order Details & Product Summary Grid ── */}
         <div className="grid md:grid-cols-2 gap-8 mb-8">

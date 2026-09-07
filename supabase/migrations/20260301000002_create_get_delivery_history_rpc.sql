@@ -1,9 +1,4 @@
--- ==============================================================================
 -- Function: get_delivery_history_by_tracking_token
--- Purpose: Safely fetches delivery status history for an order by its tracking token
---          using SECURITY DEFINER without exposing the table or requiring login.
--- ==============================================================================
-
 CREATE OR REPLACE FUNCTION get_delivery_history_by_tracking_token(p_token UUID)
 RETURNS TABLE (
     id UUID,
@@ -31,5 +26,4 @@ BEGIN
 END;
 $$;
 
--- Grant execution privileges to anonymous and authenticated roles
 GRANT EXECUTE ON FUNCTION get_delivery_history_by_tracking_token(UUID) TO anon, authenticated;

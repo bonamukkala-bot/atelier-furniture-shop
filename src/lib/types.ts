@@ -23,6 +23,8 @@ export interface Order {
   delivery_partner_name?: string | null
   delivery_partner_phone?: string | null
   tracking_token?: string | null
+  delivery_confirmation_code?: string | null
+  delivery_confirmed_via?: 'code' | 'manual' | string | null
   created_at: string
   updated_at?: string | null
 }
