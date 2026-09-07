@@ -13,8 +13,13 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
   // ── General Shop Settings State ──
   const [reviewDelayDays, setReviewDelayDays] = useState(4)
   const [googlePlaceId, setGooglePlaceId] = useState('')
+  const [prepDays, setPrepDays] = useState(3)
+  const [workshopLat, setWorkshopLat] = useState<string>('17.4375')
+  const [workshopLng, setWorkshopLng] = useState<string>('78.3975')
+  const [workshopAddress, setWorkshopAddress] = useState<string>('Atelier Fine Furniture Workshop, Jubilee Hills, Hyderabad')
   const [deliveryEnabled, setDeliveryEnabled] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [savingDeliverySettings, setSavingDeliverySettings] = useState(false)
   const [loading, setLoading] = useState(true)
   const [togglingDelivery, setTogglingDelivery] = useState(false)
 
@@ -26,6 +31,8 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
   const [zoneName, setZoneName] = useState('')
   const [maxDistanceKm, setMaxDistanceKm] = useState<string>('')
   const [zoneFee, setZoneFee] = useState<string>('')
+  const [transitMinDays, setTransitMinDays] = useState<string>('2')
+  const [transitMaxDays, setTransitMaxDays] = useState<string>('4')
   const [areaNames, setAreaNames] = useState('')
   const [pincodes, setPincodes] = useState('')
   const [savingZone, setSavingZone] = useState(false)
@@ -49,6 +56,10 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
         if (error.code === 'PGRST116') {
           setReviewDelayDays(4)
           setGooglePlaceId('')
+          setPrepDays(3)
+          setWorkshopLat('17.4375')
+          setWorkshopLng('78.3975')
+          setWorkshopAddress('Atelier Fine Furniture Workshop, Jubilee Hills, Hyderabad')
           setDeliveryEnabled(true)
         } else {
           showToast('Failed to load settings', 'error')
@@ -56,6 +67,16 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
       } else if (data) {
         setReviewDelayDays(data.review_delay_days ?? 4)
         setGooglePlaceId(data.google_place_id ?? '')
+        setPrepDays(data.prep_days ?? 3)
+        if (data.workshop_lat !== undefined && data.workshop_lat !== null) {
+          setWorkshopLat(String(data.workshop_lat))
+        }
+        if (data.workshop_lng !== undefined && data.workshop_lng !== null) {
+          setWorkshopLng(String(data.workshop_lng))
+        }
+        if (data.workshop_address) {
+          setWorkshopAddress(data.workshop_address)
+        }
         const isEnabled = data.delivery_enabled ?? true
         setDeliveryEnabled(isEnabled)
         onDeliveryEnabledChange?.(isEnabled)
@@ -99,6 +120,10 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
           id: 1,
           review_delay_days: reviewDelayDays,
           google_place_id: googlePlaceId || null,
+          prep_days: prepDays,
+          workshop_lat: parseFloat(workshopLat) || null,
+          workshop_lng: parseFloat(workshopLng) || null,
+          workshop_address: workshopAddress.trim() || null,
           delivery_enabled: newEnabledState,
         })
 
@@ -130,6 +155,10 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
           id: 1,
           review_delay_days: reviewDelayDays,
           google_place_id: googlePlaceId || null,
+          prep_days: prepDays,
+          workshop_lat: parseFloat(workshopLat) || null,
+          workshop_lng: parseFloat(workshopLng) || null,
+          workshop_address: workshopAddress.trim() || null,
           delivery_enabled: deliveryEnabled,
         })
 
@@ -143,12 +172,43 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
     }
   }
 
+  // ── Save Delivery Preparation Time & Workshop Origin Settings ──
+  async function handleSaveDeliverySettings(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingDeliverySettings(true)
+
+    try {
+      const { error } = await supabase
+        .from('shop_settings')
+        .upsert({
+          id: 1,
+          review_delay_days: reviewDelayDays,
+          google_place_id: googlePlaceId || null,
+          prep_days: prepDays,
+          workshop_lat: parseFloat(workshopLat) || null,
+          workshop_lng: parseFloat(workshopLng) || null,
+          workshop_address: workshopAddress.trim() || null,
+          delivery_enabled: deliveryEnabled,
+        })
+
+      if (error) throw error
+
+      showToast('Delivery & workshop settings saved successfully', 'success')
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to save delivery settings', 'error')
+    } finally {
+      setSavingDeliverySettings(false)
+    }
+  }
+
   // ── Delivery Zone Modal Handlers ──
   function openAddZoneModal() {
     setEditingZone(null)
     setZoneName('')
     setMaxDistanceKm('')
     setZoneFee('')
+    setTransitMinDays('2')
+    setTransitMaxDays('4')
     setAreaNames('')
     setPincodes('')
     setZoneModalOpen(true)
@@ -159,6 +219,8 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
     setZoneName(zone.zone_name)
     setMaxDistanceKm(zone.max_distance_km.toString())
     setZoneFee(zone.fee.toString())
+    setTransitMinDays((zone.transit_min_days ?? 2).toString())
+    setTransitMaxDays((zone.transit_max_days ?? 4).toString())
     setAreaNames(zone.area_names ? zone.area_names.join(', ') : '')
     setPincodes(zone.pincodes ? zone.pincodes.join(', ') : '')
     setZoneModalOpen(true)
@@ -170,6 +232,8 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
     setZoneName('')
     setMaxDistanceKm('')
     setZoneFee('')
+    setTransitMinDays('2')
+    setTransitMaxDays('4')
     setAreaNames('')
     setPincodes('')
   }
@@ -179,6 +243,8 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
     const trimmedName = zoneName.trim()
     const distNum = parseFloat(maxDistanceKm)
     const feeNum = parseFloat(zoneFee)
+    const minDaysNum = parseInt(transitMinDays, 10)
+    const maxDaysNum = parseInt(transitMaxDays, 10)
 
     if (!trimmedName) {
       showToast('Zone name is required', 'error')
@@ -190,6 +256,14 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
     }
     if (isNaN(feeNum) || feeNum < 0) {
       showToast('Fee must be a valid number (0 or greater)', 'error')
+      return
+    }
+    if (isNaN(minDaysNum) || minDaysNum < 0) {
+      showToast('Minimum transit days must be 0 or greater', 'error')
+      return
+    }
+    if (isNaN(maxDaysNum) || maxDaysNum < minDaysNum) {
+      showToast('Maximum transit days must be greater than or equal to minimum days', 'error')
       return
     }
 
@@ -213,6 +287,8 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
             zone_name: trimmedName,
             max_distance_km: distNum,
             fee: feeNum,
+            transit_min_days: minDaysNum,
+            transit_max_days: maxDaysNum,
             area_names: parsedAreas,
             pincodes: parsedPincodes,
           })
@@ -226,6 +302,8 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
           zone_name: trimmedName,
           max_distance_km: distNum,
           fee: feeNum,
+          transit_min_days: minDaysNum,
+          transit_max_days: maxDaysNum,
           area_names: parsedAreas,
           pincodes: parsedPincodes,
         })
@@ -583,6 +661,193 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
           </button>
         </div>
 
+        {/* Shop-wide Preparation Time & Workshop Origin Config */}
+        <form
+          onSubmit={handleSaveDeliverySettings}
+          style={{
+            background: '#FAF7F2',
+            border: '1px solid #E4DDD1',
+            padding: '20px 22px',
+            borderRadius: '2px',
+            marginBottom: '32px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '20px',
+          }}
+        >
+          {/* Preparation Time */}
+          <div style={{ borderBottom: '1px solid #E4DDD1', paddingBottom: '16px' }}>
+            <label
+              style={{
+                display: 'block',
+                fontSize: '11px',
+                fontWeight: 600,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: '#6B7259',
+                marginBottom: '8px',
+                fontFamily: 'Inter, sans-serif',
+              }}
+            >
+              Shop-Wide Preparation Time (Days)
+            </label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+              <input
+                type="number"
+                min="0"
+                max="60"
+                value={prepDays}
+                onChange={(e) => setPrepDays(Math.max(0, parseInt(e.target.value) || 0))}
+                required
+                style={{
+                  width: '120px',
+                  border: '1px solid #E4DDD1',
+                  background: '#FFFFFF',
+                  color: '#2B2420',
+                  padding: '10px 14px',
+                  fontSize: '14px',
+                  borderRadius: 2,
+                  fontFamily: 'Inter, sans-serif',
+                  outline: 'none',
+                  transition: 'border-color 0.18s',
+                  minHeight: '40px',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#B8874B')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#E4DDD1')}
+              />
+            </div>
+            <p style={{ fontSize: '11px', color: '#6B7259', marginTop: '6px', fontFamily: 'Inter, sans-serif' }}>
+              Standard studio crafting & packing time added to zone transit times for customer delivery estimates.
+            </p>
+          </div>
+
+          {/* Workshop Origin Coordinates */}
+          <div>
+            <div style={{ marginBottom: '12px' }}>
+              <label
+                style={{
+                  display: 'block',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.06em',
+                  textTransform: 'uppercase',
+                  color: '#6B7259',
+                  marginBottom: '4px',
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                Workshop Origin Coordinates (Fixed Studio Location)
+              </label>
+              <p style={{ fontSize: '11px', color: '#6B7259', margin: 0, fontFamily: 'Inter, sans-serif' }}>
+                Origin coordinates for Atelier's workshop used for address distance calculations.
+              </p>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '12px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: '#4A3728', marginBottom: '4px', fontFamily: 'Inter, sans-serif' }}>
+                  Latitude
+                </label>
+                <input
+                  type="text"
+                  value={workshopLat}
+                  onChange={(e) => setWorkshopLat(e.target.value)}
+                  placeholder="e.g. 17.4375"
+                  required
+                  style={{
+                    width: '100%',
+                    border: '1px solid #E4DDD1',
+                    background: '#FFFFFF',
+                    color: '#2B2420',
+                    padding: '10px 14px',
+                    fontSize: '13px',
+                    borderRadius: 2,
+                    fontFamily: 'Inter, sans-serif',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: '#4A3728', marginBottom: '4px', fontFamily: 'Inter, sans-serif' }}>
+                  Longitude
+                </label>
+                <input
+                  type="text"
+                  value={workshopLng}
+                  onChange={(e) => setWorkshopLng(e.target.value)}
+                  placeholder="e.g. 78.3975"
+                  required
+                  style={{
+                    width: '100%',
+                    border: '1px solid #E4DDD1',
+                    background: '#FFFFFF',
+                    color: '#2B2420',
+                    padding: '10px 14px',
+                    fontSize: '13px',
+                    borderRadius: 2,
+                    fontFamily: 'Inter, sans-serif',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '10px', fontWeight: 600, textTransform: 'uppercase', color: '#4A3728', marginBottom: '4px', fontFamily: 'Inter, sans-serif' }}>
+                Workshop / Studio Address (Display Reference)
+              </label>
+              <input
+                type="text"
+                value={workshopAddress}
+                onChange={(e) => setWorkshopAddress(e.target.value)}
+                placeholder="e.g. Atelier Fine Furniture Workshop, Jubilee Hills, Hyderabad"
+                style={{
+                  width: '100%',
+                  border: '1px solid #E4DDD1',
+                  background: '#FFFFFF',
+                  color: '#2B2420',
+                  padding: '10px 14px',
+                  fontSize: '13px',
+                  borderRadius: 2,
+                  fontFamily: 'Inter, sans-serif',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                disabled={savingDeliverySettings}
+                style={{
+                  background: '#4A3728',
+                  color: '#FAF7F2',
+                  border: 'none',
+                  padding: '11px 22px',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  cursor: savingDeliverySettings ? 'not-allowed' : 'pointer',
+                  borderRadius: 2,
+                  transition: 'background 0.2s',
+                  fontFamily: 'Inter, sans-serif',
+                  opacity: savingDeliverySettings ? 0.6 : 1,
+                  minHeight: '40px',
+                }}
+                onMouseEnter={(e) => !savingDeliverySettings && (e.currentTarget.style.background = '#2B2420')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#4A3728')}
+              >
+                {savingDeliverySettings ? 'Saving...' : 'Save Delivery & Workshop Settings'}
+              </button>
+            </div>
+          </div>
+        </form>
+
         {/* ── Delivery Zones Management ── */}
         <div>
           <div
@@ -608,7 +873,7 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
                 Delivery Zones
               </h4>
               <p style={{ fontSize: '11px', color: '#6B7259', margin: '2px 0 0 0', fontFamily: 'Inter, sans-serif' }}>
-                Set max distance coverage, locality areas, pincodes, and shipping fees per zone
+                Set max distance coverage, locality areas, pincodes, transit times, and shipping fees per zone
               </p>
             </div>
 
@@ -713,6 +978,18 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
                         color: '#6B7259',
                       }}
                     >
+                      Transit Time
+                    </th>
+                    <th
+                      style={{
+                        padding: '12px 16px',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        color: '#6B7259',
+                      }}
+                    >
                       Delivery Fee
                     </th>
                     <th
@@ -759,6 +1036,12 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
                       </td>
                       <td style={{ padding: '14px 16px', fontSize: '13px', color: '#4A3728', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                         {zone.max_distance_km} km
+                      </td>
+                      <td style={{ padding: '14px 16px', fontSize: '13px', color: '#4A3728', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
+                        <div>{(zone.transit_min_days ?? 2)}–{(zone.transit_max_days ?? 4)} days</div>
+                        <div style={{ fontSize: '11px', color: '#B8874B', fontWeight: 500, marginTop: '2px' }}>
+                          Est: {prepDays + (zone.transit_min_days ?? 2)}–{prepDays + (zone.transit_max_days ?? 4)}d total
+                        </div>
                       </td>
                       <td style={{ padding: '14px 16px', fontSize: '13px', fontWeight: 600, color: '#B8874B', verticalAlign: 'top', whiteSpace: 'nowrap' }}>
                         ₹{Number(zone.fee).toLocaleString('en-IN')}
@@ -1004,6 +1287,89 @@ function Settings({ onDeliveryEnabledChange }: SettingsProps) {
                     placeholder="e.g., 500"
                     value={zoneFee}
                     onChange={(e) => setZoneFee(e.target.value)}
+                    style={{
+                      width: '100%',
+                      border: '1px solid #E4DDD1',
+                      background: '#FAF7F2',
+                      color: '#2B2420',
+                      padding: '10px 14px',
+                      fontSize: '14px',
+                      borderRadius: 2,
+                      fontFamily: 'Inter, sans-serif',
+                      outline: 'none',
+                      transition: 'border-color 0.18s',
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = '#B8874B')}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = '#E4DDD1')}
+                  />
+                </div>
+              </div>
+
+              {/* Transit Days (Min - Max) */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6B7259',
+                      marginBottom: '6px',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                  >
+                    Transit Min Days *
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    required
+                    placeholder="e.g., 2"
+                    value={transitMinDays}
+                    onChange={(e) => setTransitMinDays(e.target.value)}
+                    style={{
+                      width: '100%',
+                      border: '1px solid #E4DDD1',
+                      background: '#FAF7F2',
+                      color: '#2B2420',
+                      padding: '10px 14px',
+                      fontSize: '14px',
+                      borderRadius: 2,
+                      fontFamily: 'Inter, sans-serif',
+                      outline: 'none',
+                      transition: 'border-color 0.18s',
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = '#B8874B')}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = '#E4DDD1')}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    style={{
+                      display: 'block',
+                      fontSize: '11px',
+                      fontWeight: 600,
+                      letterSpacing: '0.06em',
+                      textTransform: 'uppercase',
+                      color: '#6B7259',
+                      marginBottom: '6px',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                  >
+                    Transit Max Days *
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    min="0"
+                    required
+                    placeholder="e.g., 4"
+                    value={transitMaxDays}
+                    onChange={(e) => setTransitMaxDays(e.target.value)}
                     style={{
                       width: '100%',
                       border: '1px solid #E4DDD1',

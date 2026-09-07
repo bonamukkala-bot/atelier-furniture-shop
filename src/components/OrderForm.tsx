@@ -33,6 +33,7 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
   const [matchedEnquiry, setMatchedEnquiry] = useState<DeliveryEnquiry | null>(null)
   const [dismissedEnquiryId, setDismissedEnquiryId] = useState<string | null>(null)
   const [linkedEnquiryId, setLinkedEnquiryId] = useState<string | null>(null)
+  const [prepDays, setPrepDays] = useState<number>(3)
 
   // ── Initial Data Load ──
   useEffect(() => {
@@ -48,18 +49,22 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
           .from('delivery_zones')
           .select('*')
           .order('fee', { ascending: true }),
-        propDeliveryEnabled === undefined
-          ? supabase.from('shop_settings').select('delivery_enabled').eq('id', 1).maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
+        supabase.from('shop_settings').select('delivery_enabled, prep_days').eq('id', 1).maybeSingle(),
       ])
 
       setProducts(productsRes.data ?? [])
       setDeliveryZones(zonesRes.data ?? [])
 
+      if (settingsRes.data) {
+        if (settingsRes.data.prep_days !== undefined && settingsRes.data.prep_days !== null) {
+          setPrepDays(settingsRes.data.prep_days)
+        }
+        if (propDeliveryEnabled === undefined && settingsRes.data.delivery_enabled !== undefined && settingsRes.data.delivery_enabled !== null) {
+          setIsDeliveryEnabled(settingsRes.data.delivery_enabled)
+        }
+      }
       if (propDeliveryEnabled !== undefined) {
         setIsDeliveryEnabled(propDeliveryEnabled)
-      } else if (settingsRes.data && settingsRes.data.delivery_enabled !== undefined) {
-        setIsDeliveryEnabled(settingsRes.data.delivery_enabled)
       }
     }
     loadInitialData()
@@ -82,7 +87,7 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
           .from('delivery_enquiries')
           .select(`
             *,
-            delivery_zones ( id, zone_name, fee )
+            delivery_zones ( id, zone_name, fee, transit_min_days, transit_max_days )
           `)
           .eq('phone', trimmed)
           .neq('status', 'closed')
@@ -519,10 +524,19 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
                 <option value="" className="text-[#6B7259]/50 bg-white">Select delivery zone...</option>
                 {deliveryZones.map((z) => (
                   <option key={z.id} value={z.id} className="bg-white">
-                    {z.zone_name} (Within {z.max_distance_km}km) — ₹{Number(z.fee).toLocaleString('en-IN')}
+                    {z.zone_name} (Within {z.max_distance_km}km | {z.transit_min_days ?? 2}–{z.transit_max_days ?? 4}d transit) — ₹{Number(z.fee).toLocaleString('en-IN')}
                   </option>
                 ))}
               </select>
+              {deliveryZoneId && (() => {
+                const z = deliveryZones.find((item) => item.id === deliveryZoneId)
+                if (!z) return null
+                return (
+                  <p className="text-[10px] text-[#B8874B] font-medium mt-1.5 leading-relaxed">
+                    Estimated delivery: {prepDays + (z.transit_min_days ?? 2)}–{prepDays + (z.transit_max_days ?? 4)} days from order confirmation.
+                  </p>
+                )
+              })()}
             </div>
 
             <div>

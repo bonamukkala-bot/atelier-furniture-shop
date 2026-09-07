@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabaseClient'
 import { CONTACT_PHONE } from './StorefrontPage'
 import LanguageToggle from '../components/LanguageToggle'
-import type { DeliveryStatusHistory } from '../lib/types'
+import type { DeliveryStatusHistory, DeliveryZone } from '../lib/types'
 
 interface TrackingOrder {
   id: string
@@ -12,6 +12,7 @@ interface TrackingOrder {
   delivery_status?: string
   delivery_address?: string | null
   delivery_fee?: number | null
+  delivery_zone_id?: string | null
   total?: number | null
   payment_status?: string | null
   deposit_amount?: number | null
@@ -71,6 +72,8 @@ export default function OrderTrackingPage() {
   const [error, setError] = useState<string | null>(null)
   const [order, setOrder] = useState<TrackingOrder | null>(null)
   const [product, setProduct] = useState<TrackingProduct | null>(null)
+  const [deliveryZone, setDeliveryZone] = useState<DeliveryZone | null>(null)
+  const [prepDays, setPrepDays] = useState<number>(3)
   const [history, setHistory] = useState<DeliveryStatusHistory[]>([])
 
   useEffect(() => {
@@ -109,6 +112,36 @@ export default function OrderTrackingPage() {
       }
 
       setOrder(orderResult)
+
+      // Fetch shop settings for prep days
+      try {
+        const { data: settingsData } = await supabase
+          .from('shop_settings')
+          .select('prep_days')
+          .eq('id', 1)
+          .maybeSingle()
+        if (settingsData && settingsData.prep_days !== undefined && settingsData.prep_days !== null) {
+          setPrepDays(settingsData.prep_days)
+        }
+      } catch (settingsErr) {
+        console.warn('Could not fetch prep days:', settingsErr)
+      }
+
+      // Fetch delivery zone if delivery_zone_id is present
+      if (orderResult.delivery_zone_id) {
+        try {
+          const { data: zoneData } = await supabase
+            .from('delivery_zones')
+            .select('*')
+            .eq('id', orderResult.delivery_zone_id)
+            .maybeSingle()
+          if (zoneData) {
+            setDeliveryZone(zoneData)
+          }
+        } catch (zoneErr) {
+          console.warn('Could not fetch delivery zone details:', zoneErr)
+        }
+      }
 
       // 2. Fetch product details if product_id is available
       if (orderResult.product_id) {
@@ -469,6 +502,22 @@ export default function OrderTrackingPage() {
                     {order.delivery_address || 'Address registered with studio'}
                   </p>
                 </div>
+
+                {deliveryZone && (
+                  <div>
+                    <span className="text-[11px] uppercase tracking-wider text-[#6B7259] block font-semibold">
+                      Estimated Delivery
+                    </span>
+                    <p className="text-[#2B2420] mt-0.5 font-medium">
+                      Estimated delivery: {prepDays + (deliveryZone.transit_min_days ?? 2)}–{prepDays + (deliveryZone.transit_max_days ?? 4)} days from order confirmation.
+                      {deliveryZone.zone_name ? (
+                        <span className="text-xs text-[#6B7259] ml-1.5 font-normal">
+                          ({deliveryZone.zone_name})
+                        </span>
+                      ) : null}
+                    </p>
+                  </div>
+                )}
 
                 {order.delivery_partner_name && (
                   <div>

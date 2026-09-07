@@ -48,6 +48,8 @@ export interface OrderWithDetails extends Order {
     id: string
     zone_name: string
     fee: number
+    transit_min_days?: number | null
+    transit_max_days?: number | null
   } | null
 }
 
@@ -64,6 +66,10 @@ export interface ShopSettings {
   review_delay_days: number
   google_place_id: string | null
   delivery_enabled?: boolean
+  prep_days?: number
+  workshop_lat?: number | null
+  workshop_lng?: number | null
+  workshop_address?: string | null
 }
 
 export interface Product {
@@ -145,6 +151,8 @@ export interface DeliveryZone {
   fee: number
   area_names?: string[] | null
   pincodes?: string[] | null
+  transit_min_days?: number | null
+  transit_max_days?: number | null
   created_at?: string
 }
 
@@ -158,6 +166,9 @@ export interface DeliveryEnquiry {
   street_locality?: string | null
   zone_id: string | null
   is_deliverable: boolean
+  latitude?: number | null
+  longitude?: number | null
+  distance_km?: number | null
   status: 'new' | 'contacted' | 'closed'
   created_at: string
   products?: {
@@ -168,6 +179,8 @@ export interface DeliveryEnquiry {
   delivery_zones?: {
     zone_name: string
     fee: number
+    transit_min_days?: number | null
+    transit_max_days?: number | null
   } | null
 }
 

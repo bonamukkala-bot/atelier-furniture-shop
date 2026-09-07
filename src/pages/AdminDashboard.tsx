@@ -17,6 +17,7 @@ import DeliveryEnquiriesList from '../components/DeliveryEnquiriesList'
 import DeliveryOrdersList from '../components/DeliveryOrdersList'
 import { ToastProvider, useToast } from '../context/ToastContext'
 import type { Product, Worker } from '../lib/types'
+import { isEnquiryStale } from '../lib/constants'
 
 type ActiveView = 'dashboard' | 'products' | 'orders' | 'delivery-enquiries' | 'customers' | 'workers' | 'settings'
 type DrawerMode =
@@ -363,6 +364,7 @@ function AdminDashboardInner() {
   const [pendingReviewRequests, setPendingReviewRequests] = useState<any[]>([])
   const [reviewRequestsLoading, setReviewRequestsLoading] = useState(true)
   const [newEnquiriesCount, setNewEnquiriesCount] = useState(0)
+  const [staleEnquiriesCount, setStaleEnquiriesCount] = useState(0)
 
   // ── Refresh keys ──
   const [productRefreshKey, setProductRefreshKey] = useState(0)
@@ -378,13 +380,15 @@ function AdminDashboardInner() {
 
   async function fetchNewEnquiriesCount() {
     try {
-      const { count, error } = await supabase
+      const { data, error } = await supabase
         .from('delivery_enquiries')
-        .select('*', { count: 'exact', head: true })
+        .select('id, created_at, status')
         .eq('status', 'new')
 
-      if (!error && typeof count === 'number') {
-        setNewEnquiriesCount(count)
+      if (!error && data) {
+        setNewEnquiriesCount(data.length)
+        const staleCount = data.filter((e) => isEnquiryStale(e.created_at, e.status)).length
+        setStaleEnquiriesCount(staleCount)
       }
     } catch (err) {
       console.warn('Could not fetch new delivery enquiries count:', err)
@@ -657,7 +661,7 @@ Thank you for supporting our craft. 🙏
     }
   }
 
-  const navItems: { view: ActiveView; label: string; icon: React.ReactNode; badge?: number }[] = [
+  const navItems: { view: ActiveView; label: string; icon: React.ReactNode; badge?: number; staleBadge?: number }[] = [
     { view: 'dashboard', label: 'Dashboard', icon: <IconDashboard /> },
     { view: 'products', label: 'Products', icon: <IconProducts /> },
     { view: 'orders', label: 'Orders', icon: <IconOrders /> },
@@ -668,6 +672,7 @@ Thank you for supporting our craft. 🙏
             label: 'Deliveries',
             icon: <IconDelivery />,
             badge: newEnquiriesCount,
+            staleBadge: staleEnquiriesCount,
           },
         ]
       : []),
@@ -1104,7 +1109,7 @@ Thank you for supporting our craft. 🙏
             >
               Navigation
             </div>
-            {navItems.map(({ view, label, icon, badge }) => (
+            {navItems.map(({ view, label, icon, badge, staleBadge }) => (
               <button
                 key={view}
                 onClick={() => goTo(view)}
@@ -1113,22 +1118,49 @@ Thank you for supporting our craft. 🙏
                 {icon}
                 <span>{label}</span>
                 {badge !== undefined && badge > 0 && (
-                  <span
+                  <div
                     style={{
                       marginLeft: 'auto',
-                      background: '#B8874B',
-                      color: '#FAF7F2',
-                      fontSize: 10,
-                      fontWeight: 700,
-                      padding: '1px 6px',
-                      borderRadius: 10,
-                      minWidth: 18,
-                      textAlign: 'center',
-                      lineHeight: '16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 5,
                     }}
                   >
-                    {badge}
-                  </span>
+                    <span
+                      title={`${badge} new`}
+                      style={{
+                        background: '#B8874B',
+                        color: '#FAF7F2',
+                        fontSize: 10,
+                        fontWeight: 700,
+                        padding: '1px 6px',
+                        borderRadius: 10,
+                        minWidth: 18,
+                        textAlign: 'center',
+                        lineHeight: '16px',
+                      }}
+                    >
+                      {badge}
+                    </span>
+                    {staleBadge !== undefined && staleBadge > 0 && (
+                      <span
+                        title={`${staleBadge} overdue enquiries (>48h)`}
+                        style={{
+                          background: '#C0523C',
+                          color: '#FAF7F2',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: 10,
+                          minWidth: 18,
+                          textAlign: 'center',
+                          lineHeight: '16px',
+                        }}
+                      >
+                        {staleBadge} overdue
+                      </span>
+                    )}
+                  </div>
                 )}
               </button>
             ))}
@@ -1534,6 +1566,7 @@ Thank you for supporting our craft. 🙏
                       <span>Customer Enquiries</span>
                       {newEnquiriesCount > 0 && (
                         <span
+                          title={`${newEnquiriesCount} new enquiries`}
                           style={{
                             background: deliveriesTab === 'enquiries' ? '#B8874B' : 'rgba(107,114,89,0.15)',
                             color: deliveriesTab === 'enquiries' ? '#fff' : '#6B7259',
@@ -1544,6 +1577,28 @@ Thank you for supporting our craft. 🙏
                           }}
                         >
                           {newEnquiriesCount}
+                        </span>
+                      )}
+                      {staleEnquiriesCount > 0 && (
+                        <span
+                          title={`${staleEnquiriesCount} overdue enquiries (>48h)`}
+                          style={{
+                            background: '#C0523C',
+                            color: '#fff',
+                            fontSize: 10,
+                            padding: '1px 7px',
+                            borderRadius: 10,
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10" />
+                            <polyline points="12 6 12 12 16 14" />
+                          </svg>
+                          {staleEnquiriesCount} overdue
                         </span>
                       )}
                     </button>

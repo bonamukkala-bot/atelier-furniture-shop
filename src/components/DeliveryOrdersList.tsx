@@ -90,7 +90,7 @@ export default function DeliveryOrdersList() {
           *,
           customers ( id, name, phone, email ),
           products ( id, name, price, image_url ),
-          delivery_zones ( id, zone_name, fee )
+          delivery_zones ( id, zone_name, fee, transit_min_days, transit_max_days )
         `)
         .eq('fulfillment_type', 'delivery')
         .order('created_at', { ascending: false })

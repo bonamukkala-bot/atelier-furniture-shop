@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useToast } from '../context/ToastContext'
 import type { DeliveryEnquiry } from '../lib/types'
+import { STALE_ENQUIRY_HOURS, isEnquiryStale, getTimeElapsedString } from '../lib/constants'
 
 export default function DeliveryEnquiriesList() {
   const { showToast } = useToast()
@@ -25,7 +26,7 @@ export default function DeliveryEnquiriesList() {
         .select(`
           *,
           products ( name, price, image_url ),
-          delivery_zones ( zone_name, fee )
+          delivery_zones ( zone_name, fee, transit_min_days, transit_max_days )
         `)
         .order('created_at', { ascending: false })
 
@@ -86,6 +87,10 @@ export default function DeliveryEnquiriesList() {
 
     return result
   }, [enquiries, statusFilter, searchQuery])
+
+  const staleCount = useMemo(() => {
+    return enquiries.filter((e) => isEnquiryStale(e.created_at, e.status)).length
+  }, [enquiries])
 
   const statusBadgeStyle = (status: string) => {
     switch (status) {
@@ -217,6 +222,7 @@ export default function DeliveryEnquiriesList() {
                 tab.value === 'all'
                   ? enquiries.length
                   : enquiries.filter((e) => (e.status || 'new') === tab.value).length
+              const showOverdueBadge = tab.value === 'new' && staleCount > 0
 
               return (
                 <button
@@ -253,6 +259,22 @@ export default function DeliveryEnquiriesList() {
                   >
                     {count}
                   </span>
+                  {showOverdueBadge && (
+                    <span
+                      title={`${staleCount} overdue enquiries (> ${STALE_ENQUIRY_HOURS} hours)`}
+                      style={{
+                        background: active ? '#C0523C' : 'rgba(192,82,60,0.12)',
+                        color: active ? '#fff' : '#C0523C',
+                        border: active ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(192,82,60,0.3)',
+                        fontSize: 10,
+                        padding: '1px 6px',
+                        borderRadius: 10,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {staleCount} overdue
+                    </span>
+                  )}
                 </button>
               )
             })}
@@ -343,16 +365,25 @@ export default function DeliveryEnquiriesList() {
             <tbody>
               {filteredEnquiries.map((enquiry, i) => {
                 const currentStatus = enquiry.status || 'new'
+                const isStale = isEnquiryStale(enquiry.created_at, currentStatus)
+
+                // Distinct visual treatment for stale enquiries
+                const defaultRowBg = isStale
+                  ? (i % 2 === 0 ? '#FFF8F6' : '#FFF3EF')
+                  : (i % 2 === 0 ? '#fff' : '#FDFAF7')
+                const hoverRowBg = isStale ? '#FFEAE3' : '#FAF7F2'
+
                 return (
                   <tr
                     key={enquiry.id}
                     style={{
                       borderTop: i === 0 ? 'none' : '1px solid #F0EBE4',
-                      background: i % 2 === 0 ? '#fff' : '#FDFAF7',
+                      background: defaultRowBg,
+                      borderLeft: isStale ? '3px solid #C0523C' : '3px solid transparent',
                       transition: 'background 0.15s',
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#FAF7F2')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#FDFAF7')}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = hoverRowBg)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = defaultRowBg)}
                   >
                     {/* Customer */}
                     <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
@@ -423,6 +454,7 @@ export default function DeliveryEnquiriesList() {
                           <div style={{ fontSize: 11, color: '#4A3728', marginTop: 3, fontWeight: 500 }}>
                             {enquiry.delivery_zones?.zone_name ?? 'Zone Matched'}
                             {enquiry.delivery_zones?.fee ? ` (₹${enquiry.delivery_zones.fee})` : ''}
+                            {enquiry.distance_km !== undefined && enquiry.distance_km !== null ? ` • ${enquiry.distance_km} km` : ''}
                           </div>
                         </div>
                       ) : (
@@ -445,38 +477,73 @@ export default function DeliveryEnquiriesList() {
                     </td>
 
                     {/* Received Date */}
-                    <td style={{ padding: '12px 14px', verticalAlign: 'top', color: '#6B7259', fontSize: 11 }}>
-                      {formatDate(enquiry.created_at)}
+                    <td style={{ padding: '12px 14px', verticalAlign: 'top', fontSize: 11 }}>
+                      <div style={{ color: isStale ? '#8A3B2B' : '#6B7259', fontWeight: isStale ? 600 : 400 }}>
+                        {formatDate(enquiry.created_at)}
+                      </div>
+                      <div style={{ fontSize: 10, color: isStale ? '#C0523C' : '#8A827A', marginTop: 2, fontWeight: isStale ? 600 : 400 }}>
+                        {getTimeElapsedString(enquiry.created_at)}
+                      </div>
                     </td>
 
-                    {/* Status dropdown */}
+                    {/* Status dropdown & Overdue badge */}
                     <td style={{ padding: '12px 14px', verticalAlign: 'top' }}>
-                      <select
-                        value={currentStatus}
-                        disabled={updatingId === enquiry.id}
-                        onChange={(e) =>
-                          handleStatusChange(
-                            enquiry.id,
-                            e.target.value as 'new' | 'contacted' | 'closed'
-                          )
-                        }
-                        style={{
-                          ...statusBadgeStyle(currentStatus),
-                          padding: '4px 8px',
-                          borderRadius: 2,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          letterSpacing: '0.06em',
-                          textTransform: 'uppercase',
-                          cursor: 'pointer',
-                          outline: 'none',
-                          fontFamily: 'Inter, sans-serif',
-                        }}
-                      >
-                        <option value="new">New</option>
-                        <option value="contacted">Contacted</option>
-                        <option value="closed">Closed</option>
-                      </select>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                        <select
+                          value={currentStatus}
+                          disabled={updatingId === enquiry.id}
+                          onChange={(e) =>
+                            handleStatusChange(
+                              enquiry.id,
+                              e.target.value as 'new' | 'contacted' | 'closed'
+                            )
+                          }
+                          style={{
+                            ...statusBadgeStyle(currentStatus),
+                            padding: '4px 8px',
+                            borderRadius: 2,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            letterSpacing: '0.06em',
+                            textTransform: 'uppercase',
+                            cursor: 'pointer',
+                            outline: 'none',
+                            fontFamily: 'Inter, sans-serif',
+                          }}
+                        >
+                          <option value="new">New</option>
+                          <option value="contacted">Contacted</option>
+                          <option value="closed">Closed</option>
+                        </select>
+
+                        {isStale && (
+                          <span
+                            title={`Enquiry received more than ${STALE_ENQUIRY_HOURS} hours ago without contact`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 4,
+                              background: 'rgba(192,82,60,0.12)',
+                              color: '#C0523C',
+                              border: '1px solid rgba(192,82,60,0.35)',
+                              fontSize: 9,
+                              fontWeight: 700,
+                              letterSpacing: '0.08em',
+                              textTransform: 'uppercase',
+                              padding: '2px 6px',
+                              borderRadius: 2,
+                              fontFamily: 'Inter, sans-serif',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <circle cx="12" cy="12" r="10" />
+                              <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                            Overdue (&gt;{STALE_ENQUIRY_HOURS}h)
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Action: WhatsApp link */}
