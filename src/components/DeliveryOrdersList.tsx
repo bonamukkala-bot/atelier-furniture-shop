@@ -199,9 +199,16 @@ export default function DeliveryOrdersList() {
     e.preventDefault()
     if (!editingOrder) return
 
+    const statusToSave = newStatus
+
+    // Guard: Prevent setting 'delivered' status directly via dropdown
+    if (statusToSave === 'delivered' && editingOrder.delivery_status !== 'delivered') {
+      showToast("Delivery must be confirmed with the customer's 6-digit code.", 'error')
+      return
+    }
+
     setSavingUpdate(true)
     try {
-      const statusToSave = newStatus
       const trimmedPartnerName = partnerName.trim() || null
       const trimmedPartnerPhone = partnerPhone.trim() || null
       const trimmedNote = statusNote.trim() || null
@@ -876,9 +883,18 @@ export default function DeliveryOrdersList() {
                   <option value="confirmed">Confirmed</option>
                   <option value="preparing">Preparing</option>
                   <option value="out_for_delivery">Out for Delivery</option>
-                  <option value="delivered">Delivered</option>
+                  {editingOrder.delivery_status === 'delivered' && (
+                    <option value="delivered" disabled>
+                      Delivered (Verified with Code)
+                    </option>
+                  )}
                   <option value="issue">Issue / On Hold</option>
                 </select>
+                {editingOrder.delivery_status !== 'delivered' && (
+                  <p style={{ fontSize: 10, color: '#6B7259', marginTop: 4, fontFamily: 'Inter, sans-serif' }}>
+                    Note: To mark an order as Delivered, verify the customer's 6-digit confirmation code.
+                  </p>
+                )}
               </div>
 
               {/* Status Note */}

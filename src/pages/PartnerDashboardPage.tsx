@@ -1,6 +1,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getStoredPartnerSession, partnerLogout, fetchPartnerOrders, updatePartnerOrderStatus } from '../lib/partnerAuth'
+import {
+  getStoredPartnerSession,
+  partnerLogout,
+  fetchPartnerOrders,
+  updatePartnerOrderStatus,
+  acceptPartnerOrder,
+} from '../lib/partnerAuth'
 import type { PartnerOrder, PartnerSession } from '../lib/types'
 import { useToast } from '../context/ToastContext'
 import DeliveryConfirmationModal from '../components/DeliveryConfirmationModal'
@@ -34,10 +40,10 @@ const STATUS_CONFIG: Record<
     border: '1px solid rgba(74, 93, 62, 0.35)',
   },
   issue: {
-    label: 'Issue / On Hold',
-    bg: 'rgba(168, 75, 59, 0.12)',
+    label: 'Issue / Attention Needed',
+    bg: 'rgba(192, 82, 60, 0.15)',
     color: '#A84B3B',
-    border: '1px solid rgba(168, 75, 59, 0.35)',
+    border: '1px solid rgba(192, 82, 60, 0.35)',
   },
 }
 
@@ -88,6 +94,23 @@ export default function PartnerDashboardPage() {
     partnerLogout()
     showToast('Logged out of delivery portal.', 'success')
     navigate('/partner-login', { replace: true })
+  }
+
+  // Accept Assigned Order
+  async function handleAcceptOrder(order: PartnerOrder) {
+    if (!session?.token) return
+    setStatusUpdatingId(order.id)
+
+    try {
+      await acceptPartnerOrder(session.token, order.id)
+      showToast('Order accepted for delivery!', 'success')
+      await loadOrders(session.token, true)
+    } catch (err: any) {
+      console.error('Failed to accept order:', err)
+      showToast(err.message || 'Failed to accept order.', 'error')
+    } finally {
+      setStatusUpdatingId(null)
+    }
   }
 
   // Quick Status Transition (e.g. Preparing -> Out for Delivery)
@@ -627,59 +650,124 @@ export default function PartnerDashboardPage() {
 
                   {/* ── Status Actions / Step Progression ── */}
                   <div style={{ paddingTop: 4 }}>
-                    {/* CASE 1: Preparing or Confirmed -> Move to Out for Delivery */}
-                    {(currentStatus === 'confirmed' || currentStatus === 'preparing') && (
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        {currentStatus === 'confirmed' && (
-                          <button
-                            type="button"
-                            onClick={() => handleQuickStatusChange(order, 'preparing')}
-                            disabled={statusUpdatingId === order.id}
-                            style={{
-                              flex: 1,
-                              padding: '10px 12px',
-                              background: '#FAF7F2',
-                              border: '1px solid #6B7259',
-                              borderRadius: 3,
-                              color: '#525843',
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: statusUpdatingId === order.id ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            Mark Preparing
-                          </button>
-                        )}
+                    {/* CASE 0: Order Assigned but Pending Partner Acceptance */}
+                    {!order.partner_accepted_at && !isDelivered ? (
+                      <div
+                        style={{
+                          background: 'rgba(184, 135, 75, 0.1)',
+                          border: '1px solid rgba(184, 135, 75, 0.35)',
+                          borderRadius: 4,
+                          padding: '12px 14px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: 10,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                width: 8,
+                                height: 8,
+                                borderRadius: '50%',
+                                background: '#B8874B',
+                              }}
+                            />
+                            <span style={{ fontSize: 12, fontWeight: 700, color: '#8F632E' }}>
+                              Pending Your Acceptance
+                            </span>
+                          </div>
+                          <span style={{ fontSize: 11, color: '#6B7259' }}>
+                            Accept order to enable delivery actions
+                          </span>
+                        </div>
+
                         <button
                           type="button"
-                          onClick={() => handleQuickStatusChange(order, 'out_for_delivery')}
+                          onClick={() => handleAcceptOrder(order)}
                           disabled={statusUpdatingId === order.id}
                           style={{
-                            flex: 1,
-                            padding: '10px 14px',
-                            background: '#B8874B',
-                            color: '#FFFFFF',
+                            width: '100%',
+                            padding: '11px 16px',
+                            background: '#4A3728',
+                            color: '#FAF7F2',
                             border: 'none',
                             borderRadius: 3,
-                            fontSize: 12,
-                            fontWeight: 600,
+                            fontSize: 13,
+                            fontWeight: 700,
                             letterSpacing: '0.04em',
                             cursor: statusUpdatingId === order.id ? 'not-allowed' : 'pointer',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            gap: 6,
+                            gap: 8,
+                            boxShadow: '0 2px 6px rgba(74, 55, 40, 0.25)',
                           }}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                            <rect x="1" y="3" width="15" height="13" rx="1" />
-                            <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
-                            <circle cx="5.5" cy="18.5" r="2.5" />
-                            <circle cx="18.5" cy="18.5" r="2.5" />
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
                           </svg>
-                          Start Delivery (Out for Delivery)
+                          {statusUpdatingId === order.id ? 'Accepting Order...' : 'Accept Order'}
                         </button>
                       </div>
+                    ) : (
+                      <>
+                        {/* CASE 1: Preparing or Confirmed -> Move to Out for Delivery */}
+                        {(currentStatus === 'confirmed' || currentStatus === 'preparing') && (
+                          <div style={{ display: 'flex', gap: 8 }}>
+                            {currentStatus === 'confirmed' && (
+                              <button
+                                type="button"
+                                onClick={() => handleQuickStatusChange(order, 'preparing')}
+                                disabled={statusUpdatingId === order.id}
+                                style={{
+                                  flex: 1,
+                                  padding: '10px 12px',
+                                  background: '#FAF7F2',
+                                  border: '1px solid #6B7259',
+                                  borderRadius: 3,
+                                  color: '#525843',
+                                  fontSize: 12,
+                                  fontWeight: 600,
+                                  cursor: statusUpdatingId === order.id ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                Mark Preparing
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleQuickStatusChange(order, 'out_for_delivery')}
+                              disabled={statusUpdatingId === order.id}
+                              style={{
+                                flex: 1,
+                                padding: '10px 14px',
+                                background: '#B8874B',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                borderRadius: 3,
+                                fontSize: 12,
+                                fontWeight: 600,
+                                letterSpacing: '0.04em',
+                                cursor: statusUpdatingId === order.id ? 'not-allowed' : 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: 6,
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                <rect x="1" y="3" width="15" height="13" rx="1" />
+                                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+                                <circle cx="5.5" cy="18.5" r="2.5" />
+                                <circle cx="18.5" cy="18.5" r="2.5" />
+                              </svg>
+                              Start Delivery (Out for Delivery)
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* CASE 2: Out for Delivery -> Reused Item 4 Confirm Delivery (Code & Proof Photo) */}

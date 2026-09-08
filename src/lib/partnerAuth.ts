@@ -86,6 +86,29 @@ export async function fetchPartnerOrders(sessionToken: string): Promise<PartnerO
 }
 
 /**
+ * Accept an order assigned to the partner
+ */
+export async function acceptPartnerOrder(
+  sessionToken: string,
+  orderId: string
+): Promise<{ success: boolean; message?: string }> {
+  const { data, error } = await supabase.rpc('accept_partner_order', {
+    p_session_token: sessionToken,
+    p_order_id: orderId,
+  })
+
+  if (error) {
+    throw new Error(error.message || 'Failed to accept order.')
+  }
+
+  if (!data || !data.success) {
+    throw new Error(data?.error || 'Could not accept order.')
+  }
+
+  return data
+}
+
+/**
  * Update status of an assigned order (e.g. Preparing -> Out for Delivery)
  */
 export async function updatePartnerOrderStatus(

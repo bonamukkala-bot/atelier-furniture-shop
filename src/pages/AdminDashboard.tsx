@@ -18,6 +18,7 @@ import DeliveryOrdersList from '../components/DeliveryOrdersList'
 import { ToastProvider, useToast } from '../context/ToastContext'
 import type { Product, Worker } from '../lib/types'
 import { isEnquiryStale } from '../lib/constants'
+import { triggerReviewRequest } from '../lib/reviewRequest'
 
 type ActiveView = 'dashboard' | 'products' | 'orders' | 'delivery-enquiries' | 'customers' | 'workers' | 'settings'
 type DrawerMode =
@@ -610,54 +611,16 @@ function AdminDashboardInner() {
       return
     }
 
-    // Construct Google review URL
-    const googleReviewUrl = `https://search.google.com/local/writereview?placeid=${googlePlaceId}`
+    const result = await triggerReviewRequest(order, { googlePlaceId })
 
-    // Try to shorten URL using TinyURL API
-    let reviewLink = googleReviewUrl
-    try {
-      const tinyUrlResponse = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(googleReviewUrl)}`)
-      if (tinyUrlResponse.ok) {
-        const shortUrl = await tinyUrlResponse.text()
-        if (shortUrl) {
-          reviewLink = shortUrl
-        }
-      }
-    } catch (error) {
-      // If TinyURL fails, fall back to full URL
-      console.warn('Failed to shorten URL:', error)
-    }
-
-    // Construct multi-line message
-    const message = `Hi ${order.customer_name}! 👋
-
-Thank you for choosing Atelier Fine Furniture for your ${order.product_name}. We hope it's already found its perfect place in your home.
-
-Your experience matters a lot to us — if you have a moment, we'd be truly grateful if you could share it in a quick Google review:
-
-${reviewLink}
-
-Thank you for supporting our craft. 🙏
-— Team Atelier`
-
-    const encodedMessage = encodeURIComponent(message)
-    const whatsappUrl = `https://wa.me/${order.customer_phone}?text=${encodedMessage}`
-
-    // Open WhatsApp in new tab
-    window.open(whatsappUrl, '_blank')
-
-    // Update order's review_requested field
-    const { error } = await supabase
-      .from('orders')
-      .update({ review_requested: true })
-      .eq('id', order.id)
-
-    if (error) {
-      showToast('Failed to mark review request as sent', 'error')
-    } else {
+    if (result.success) {
       showToast('Review request opened in WhatsApp', 'success')
-      // Refresh the pending list
       fetchReviewRequestsData()
+    } else if (result.skipped) {
+      showToast(result.reason || 'Review request already sent', 'success')
+      fetchReviewRequestsData()
+    } else {
+      showToast(result.reason || 'Failed to send review request', 'error')
     }
   }
 

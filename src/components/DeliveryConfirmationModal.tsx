@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import { useToast } from '../context/ToastContext'
 import type { OrderWithDetails, PartnerOrder } from '../lib/types'
 import { confirmPartnerDeliveryWithCode, uploadProofOfDeliveryPhoto } from '../lib/partnerAuth'
+import { triggerReviewRequest } from '../lib/reviewRequest'
 
 interface DeliveryConfirmationModalProps {
   order: (OrderWithDetails | PartnerOrder) | null
@@ -25,7 +26,6 @@ export default function DeliveryConfirmationModal({
 
   const [enteredCode, setEnteredCode] = useState('')
   const [isVerifying, setIsVerifying] = useState(false)
-  const [isOverriding, setIsOverriding] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
   const [attempts, setAttempts] = useState(0)
 
@@ -35,17 +35,11 @@ export default function DeliveryConfirmationModal({
   const [isUploadingPhoto, setIsUploadingPhoto] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // ── Manual Override Section ──
-  const [showOverride, setShowOverride] = useState(false)
-  const [overrideReason, setOverrideReason] = useState('')
-
   useEffect(() => {
     if (isOpen && order) {
       setEnteredCode('')
       setErrorMsg('')
       setAttempts(0)
-      setShowOverride(false)
-      setOverrideReason('')
       setProofFile(null)
       setProofPreviewUrl(null)
       setIsUploadingPhoto(false)
@@ -103,6 +97,18 @@ export default function DeliveryConfirmationModal({
     setErrorMsg('')
     setIsVerifying(true)
 
+    // Synchronously pre-open WhatsApp tab before async operations if review hasn't been requested yet.
+    // This prevents browser popup blockers from blocking window.open after async await ticks.
+    let waWindow: Window | null = null
+    const shouldAttemptReview = !order.review_requested && !!customerPhone
+    if (shouldAttemptReview && typeof window !== 'undefined') {
+      try {
+        waWindow = window.open('', '_blank')
+      } catch (wErr) {
+        console.warn('Could not pre-open window:', wErr)
+      }
+    }
+
     try {
       let uploadedPhotoUrl: string | undefined = undefined
 
@@ -127,6 +133,16 @@ export default function DeliveryConfirmationModal({
           uploadedPhotoUrl
         )
 
+        // Trigger Auto Review-Request
+        if (shouldAttemptReview) {
+          try {
+            await triggerReviewRequest(order, { targetWindow: waWindow })
+          } catch (reviewErr) {
+            console.warn('Auto review-request trigger failed:', reviewErr)
+            if (waWindow && !waWindow.closed) waWindow.close()
+          }
+        }
+
         showToast('Delivery verified with customer code & proof photo recorded!', 'success')
         onSuccess()
         onClose()
@@ -147,17 +163,14 @@ export default function DeliveryConfirmationModal({
       const expectedCode = (currentOrder.delivery_confirmation_code || order.delivery_confirmation_code || '').trim()
 
       if (!expectedCode) {
-        throw new Error('No confirmation code generated for this order. Please use manual override.')
+        throw new Error('No confirmation code generated for this order. Please contact support.')
       }
 
       if (trimmedInput !== expectedCode) {
+        if (waWindow && !waWindow.closed) waWindow.close()
         const newAttempts = attempts + 1
         setAttempts(newAttempts)
-        if (newAttempts >= 5) {
-          setErrorMsg(`Incorrect code (${newAttempts} attempts). If the customer cannot access their tracking page, you can use the Manual Override below.`)
-        } else {
-          setErrorMsg(`Incorrect confirmation code (Attempt ${newAttempts}). Please ask the customer to re-check their tracking link.`)
-        }
+        setErrorMsg(`Incorrect confirmation code (Attempt ${newAttempts}). Please ask the customer to re-check their tracking link.`)
         return
       }
 
@@ -194,63 +207,26 @@ export default function DeliveryConfirmationModal({
         console.warn('Failed to insert history log:', histErr)
       }
 
+      // Trigger Auto Review-Request
+      if (shouldAttemptReview) {
+        try {
+          await triggerReviewRequest(order, { targetWindow: waWindow })
+        } catch (reviewErr) {
+          console.warn('Auto review-request trigger failed:', reviewErr)
+          if (waWindow && !waWindow.closed) waWindow.close()
+        }
+      }
+
       showToast('Delivery confirmed with customer code and marked as Delivered!', 'success')
       onSuccess()
       onClose()
     } catch (err: any) {
+      if (waWindow && !waWindow.closed) waWindow.close()
       console.error('Error confirming delivery:', err)
       setErrorMsg(err instanceof Error ? err.message : 'Failed to confirm delivery.')
     } finally {
       setIsVerifying(false)
       setIsUploadingPhoto(false)
-    }
-  }
-
-  // ── Manual Delivery Confirmation Override ──
-  async function handleManualOverride() {
-    if (!order) return
-    setIsOverriding(true)
-    setErrorMsg('')
-
-    try {
-      const trimmedReason = overrideReason.trim()
-      const auditNote = trimmedReason
-        ? `Manually confirmed by shop owner (code not verified) — ${trimmedReason}`
-        : 'Manually confirmed by shop owner (code not verified)'
-
-      // 1. Update order in Supabase
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({
-          delivery_status: 'delivered',
-          delivery_confirmed_via: 'manual',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', order.id)
-
-      if (orderError) throw orderError
-
-      // 2. Insert audit log
-      const { error: histError } = await supabase
-        .from('delivery_status_history')
-        .insert({
-          order_id: order.id,
-          status: 'delivered',
-          note: auditNote,
-        })
-
-      if (histError) {
-        console.warn('Failed to insert history log:', histError)
-      }
-
-      showToast('Order manually marked as Delivered (logged as manual override)', 'success')
-      onSuccess()
-      onClose()
-    } catch (err: any) {
-      console.error('Manual override error:', err)
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to override delivery status.')
-    } finally {
-      setIsOverriding(false)
     }
   }
 
@@ -268,7 +244,7 @@ export default function DeliveryConfirmationModal({
         padding: 16,
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isVerifying && !isOverriding) {
+        if (e.target === e.currentTarget && !isVerifying) {
           onClose()
         }
       }}
@@ -327,11 +303,11 @@ export default function DeliveryConfirmationModal({
           <button
             type="button"
             onClick={onClose}
-            disabled={isVerifying || isOverriding}
+            disabled={isVerifying}
             style={{
               background: 'none',
               border: 'none',
-              cursor: isVerifying || isOverriding ? 'not-allowed' : 'pointer',
+              cursor: isVerifying ? 'not-allowed' : 'pointer',
               color: '#8A8178',
               padding: 4,
               display: 'flex',
@@ -600,123 +576,6 @@ export default function DeliveryConfirmationModal({
                 : 'Verify Code & Confirm Delivery'}
             </button>
           </form>
-
-          {/* ════════ MANUAL OVERRIDE FALLBACK (Admin only) ════════ */}
-          {!isPartnerPortal && (
-            <div
-              style={{
-                marginTop: 20,
-                paddingTop: 16,
-                borderTop: '1px solid #E4DDD1',
-              }}
-            >
-              {!showOverride ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 11, color: '#8A8178' }}>
-                    Customer cannot access tracking link?
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setShowOverride(true)}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: '#A84B3B',
-                      fontSize: 11,
-                      fontWeight: 600,
-                      cursor: 'pointer',
-                      padding: 0,
-                      textDecoration: 'underline',
-                    }}
-                  >
-                    Manual Override
-                  </button>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    background: '#FAF7F2',
-                    border: '1px solid #E4DDD1',
-                    borderRadius: 3,
-                    padding: 14,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, color: '#A84B3B' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
-                      <line x1="12" y1="9" x2="12" y2="13" />
-                      <line x1="12" y1="17" x2="12.01" y2="17" />
-                    </svg>
-                    <span style={{ fontSize: 12, fontWeight: 700 }}>
-                      Manual Delivery Override
-                    </span>
-                  </div>
-
-                  <p style={{ fontSize: 11, color: '#6B7259', lineHeight: 1.45, margin: '0 0 10px 0' }}>
-                    This will mark the order as <strong>Delivered</strong> without code verification. The history log will record this delivery as <em>"Manually confirmed (unverified)"</em>.
-                  </p>
-
-                  <input
-                    type="text"
-                    value={overrideReason}
-                    onChange={(e) => setOverrideReason(e.target.value)}
-                    placeholder="Optional reason (e.g. Phone battery drained, Offline)"
-                    style={{
-                      width: '100%',
-                      fontSize: 11,
-                      padding: '7px 10px',
-                      borderRadius: 2,
-                      border: '1px solid #E4DDD1',
-                      background: '#FFFFFF',
-                      marginBottom: 10,
-                      boxSizing: 'border-box',
-                    }}
-                  />
-
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowOverride(false)}
-                      disabled={isOverriding}
-                      style={{
-                        background: '#FFFFFF',
-                        border: '1px solid #E4DDD1',
-                        color: '#4A3728',
-                        padding: '6px 10px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        borderRadius: 2,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Cancel
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleManualOverride}
-                      disabled={isOverriding}
-                      style={{
-                        background: '#A84B3B',
-                        border: 'none',
-                        color: '#FFFFFF',
-                        padding: '6px 12px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        borderRadius: 2,
-                        cursor: isOverriding ? 'not-allowed' : 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                      }}
-                    >
-                      {isOverriding ? 'Saving...' : 'Confirm Manual Delivery'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
     </div>

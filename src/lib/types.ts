@@ -28,6 +28,7 @@ export interface Order {
   delivery_confirmed_via?: 'code' | 'manual' | string | null
   proof_of_delivery_url?: string | null
   proof_of_delivery_timestamp?: string | null
+  partner_accepted_at?: string | null
   created_at: string
   updated_at?: string | null
 }
@@ -230,6 +231,8 @@ export interface PartnerOrder {
   delivery_confirmed_via?: string | null
   proof_of_delivery_url?: string | null
   proof_of_delivery_timestamp?: string | null
+  partner_accepted_at?: string | null
+  review_requested?: boolean | null
   created_at: string
   updated_at?: string | null
 }

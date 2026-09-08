@@ -16,11 +16,13 @@ interface TrackingOrder {
   total?: number | null
   payment_status?: string | null
   deposit_amount?: number | null
+  delivery_partner_id?: string | null
   delivery_partner_name?: string | null
   delivery_partner_phone?: string | null
   tracking_token?: string | null
   delivery_confirmation_code?: string | null
   delivery_confirmed_via?: string | null
+  partner_accepted_at?: string | null
   created_at?: string
   updated_at?: string | null
 }
@@ -56,16 +58,10 @@ function formatDateTime(dateStr?: string | null): string {
 const STEPS = [
   { key: 'confirmed', label: 'Confirmed', desc: 'Order received & scheduled' },
   { key: 'preparing', label: 'Preparing', desc: 'Handcrafting & packing in studio' },
+  { key: 'assigned', label: 'Assigned for Delivery', desc: 'A delivery partner has been assigned to your order' },
   { key: 'out_for_delivery', label: 'Out for Delivery', desc: 'In transit to your doorstep' },
   { key: 'delivered', label: 'Delivered', desc: 'Delivered safely to you' },
 ]
-
-const STATUS_INDEX_MAP: Record<string, number> = {
-  confirmed: 0,
-  preparing: 1,
-  out_for_delivery: 2,
-  delivered: 3,
-}
 
 export default function OrderTrackingPage() {
   const { tracking_token } = useParams<{ tracking_token: string }>()
@@ -85,12 +81,24 @@ export default function OrderTrackingPage() {
       return
     }
 
-    loadTrackingData(tracking_token)
+    // Initial load (shows spinner)
+    loadTrackingData(tracking_token, false)
+
+    // Background live-sync: Poll every 10 seconds via secure token RPC
+    const intervalId = setInterval(() => {
+      loadTrackingData(tracking_token, true)
+    }, 10000)
+
+    return () => {
+      clearInterval(intervalId)
+    }
   }, [tracking_token])
 
-  async function loadTrackingData(token: string) {
-    setLoading(true)
-    setError(null)
+  async function loadTrackingData(token: string, silent = false) {
+    if (!silent) {
+      setLoading(true)
+      setError(null)
+    }
 
     try {
       // 1. Call get_order_by_tracking_token RPC
@@ -99,17 +107,21 @@ export default function OrderTrackingPage() {
       })
 
       if (rpcError || !data) {
-        setError('Order not found or tracking token invalid.')
-        setOrder(null)
-        setLoading(false)
+        if (!silent) {
+          setError('Order not found or tracking token invalid.')
+          setOrder(null)
+          setLoading(false)
+        }
         return
       }
 
       const orderResult: TrackingOrder = Array.isArray(data) ? data[0] : data
       if (!orderResult) {
-        setError('Order not found or tracking token invalid.')
-        setOrder(null)
-        setLoading(false)
+        if (!silent) {
+          setError('Order not found or tracking token invalid.')
+          setOrder(null)
+          setLoading(false)
+        }
         return
       }
 
@@ -263,7 +275,23 @@ export default function OrderTrackingPage() {
   const currentStatus = (order.delivery_status || 'confirmed').toLowerCase()
   const isIssue = currentStatus === 'issue'
   const isDelivered = currentStatus === 'delivered'
-  const currentStepIndex = isIssue ? -1 : (STATUS_INDEX_MAP[currentStatus] ?? 0)
+  const isOutForDelivery = currentStatus === 'out_for_delivery'
+  const isPartnerAccepted = Boolean(order.partner_accepted_at)
+
+  let currentStepIndex = 0
+  if (isIssue) {
+    currentStepIndex = -1
+  } else if (isDelivered) {
+    currentStepIndex = 4
+  } else if (isOutForDelivery) {
+    currentStepIndex = 3
+  } else if (isPartnerAccepted) {
+    currentStepIndex = 2
+  } else if (currentStatus === 'preparing' || order.delivery_partner_id || order.delivery_partner_name) {
+    currentStepIndex = 1
+  } else {
+    currentStepIndex = 0
+  }
 
   return (
     <main className="min-h-screen bg-[#FAF7F2] text-[#2B2420]">
@@ -373,7 +401,7 @@ export default function OrderTrackingPage() {
 
           <div className="relative">
             {/* Steps Container */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 relative z-10">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6 relative z-10">
               {STEPS.map((step, idx) => {
                 const isCompleted = !isIssue && (isDelivered ? idx <= currentStepIndex : idx < currentStepIndex)
                 const isActive = !isIssue && !isDelivered && currentStepIndex === idx
