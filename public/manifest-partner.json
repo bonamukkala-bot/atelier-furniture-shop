@@ -1,0 +1,25 @@
+{
+  "name": "Atelier Partner",
+  "short_name": "Atelier Partner",
+  "description": "Atelier Delivery Partner Portal — Deliveries & Order Tracking",
+  "start_url": "/partner/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAF7F2",
+  "theme_color": "#6B7259",
+  "icons": [
+    {
+      "src": "/icons/partner-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/partner-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

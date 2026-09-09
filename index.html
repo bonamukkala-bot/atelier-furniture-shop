@@ -22,6 +22,70 @@
     <meta name="twitter:title" content="Atelier — Fine Furniture in Hyderabad" />
     <meta name="twitter:description" content="Browse Atelier's curated furniture collection — handcrafted sofas, dining sets, beds and more. Enquire directly on WhatsApp. Visit our showroom in Hyderabad." />
     <meta name="twitter:image" content="https://atelier-furniture-shop.vercel.app/hero-poster.png" />
+
+    <!-- PWA & Apple Mobile Dynamic Configuration -->
+    <script>
+      (function() {
+        var path = window.location.pathname;
+        var manifestUrl = null;
+        var themeColor = '#2B2420';
+        var appTitle = 'Atelier';
+        var touchIcon = '/favicon.svg';
+
+        if (path.startsWith('/partner')) {
+          manifestUrl = '/manifest-partner.json';
+          themeColor = '#6B7259';
+          appTitle = 'Atelier Partner';
+          touchIcon = '/icons/partner-icon-192.png';
+        } else if (path.startsWith('/admin') || path.startsWith('/login')) {
+          manifestUrl = '/manifest-admin.json';
+          themeColor = '#2B2420';
+          appTitle = 'Atelier Admin';
+          touchIcon = '/icons/admin-icon-192.png';
+        }
+
+        if (manifestUrl) {
+          var manifestLink = document.createElement('link');
+          manifestLink.rel = 'manifest';
+          manifestLink.href = manifestUrl;
+          document.head.appendChild(manifestLink);
+        }
+
+        var metaTheme = document.createElement('meta');
+        metaTheme.name = 'theme-color';
+        metaTheme.content = themeColor;
+        document.head.appendChild(metaTheme);
+
+        var metaCapable = document.createElement('meta');
+        metaCapable.name = 'apple-mobile-web-app-capable';
+        metaCapable.content = 'yes';
+        document.head.appendChild(metaCapable);
+
+        var metaStatus = document.createElement('meta');
+        metaStatus.name = 'apple-mobile-web-app-status-bar-style';
+        metaStatus.content = 'default';
+        document.head.appendChild(metaStatus);
+
+        var metaTitle = document.createElement('meta');
+        metaTitle.name = 'apple-mobile-web-app-title';
+        metaTitle.content = appTitle;
+        document.head.appendChild(metaTitle);
+
+        var appleIcon = document.createElement('link');
+        appleIcon.rel = 'apple-touch-icon';
+        appleIcon.href = touchIcon;
+        document.head.appendChild(appleIcon);
+
+        // Register minimal Service Worker for installability
+        if ('serviceWorker' in navigator) {
+          window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js').catch(function(err) {
+              console.debug('ServiceWorker registration note:', err);
+            });
+          });
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
