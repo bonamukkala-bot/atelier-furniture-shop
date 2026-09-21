@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabaseClient'
 import type { Product } from '../lib/types'
 import { useToast } from '../context/ToastContext'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useTranslation } from 'react-i18next'
 import ProductCard from './ProductCard'
 
 interface ProductListProps {
@@ -97,8 +98,8 @@ function DeleteConfirmModal({ productName, onConfirm, onCancel }: DeleteConfirmP
             Delete Product?
           </h3>
           <p style={{ fontSize: 13, color: '#6B7259', lineHeight: 1.55, margin: '0 0 28px' }}>
-            <strong style={{ color: '#2B2420' }}>"{productName}"</strong> will be permanently deleted.
-            This action cannot be undone.
+            <strong style={{ color: '#2B2420' }}>"{productName}"</strong> will be deleted.
+            If this product has existing orders, it will be safely archived instead.
           </p>
 
           <div style={{ display: 'flex', gap: 10 }}>
@@ -153,13 +154,14 @@ function DeleteConfirmModal({ productName, onConfirm, onCancel }: DeleteConfirmP
 
 // ── Product List ───────────────────────────────────────────────────────────────
 function ProductList({ onEdit, refreshKey }: ProductListProps) {
+  const { t } = useTranslation()
   const { showToast } = useToast()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [productImages, setProductImages] = useState<Record<string, string[]>>({})
 
-  // ── Search & Sort state (new — no DB queries) ──
+  // ── Search & Sort state ──
   const [searchQuery, setSearchQuery] = useState('')
   const [sortOption, setSortOption] = useState<SortOption>('newest')
 
@@ -167,15 +169,16 @@ function ProductList({ onEdit, refreshKey }: ProductListProps) {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [materialFilter, setMaterialFilter] = useState('all')
   const [availabilityFilter, setAvailabilityFilter] = useState<'all' | 'in_stock' | 'sold_out' | 'sold'>('all')
+  const [showArchived, setShowArchived] = useState(false)
 
-  // ── Delete confirm state (new) ──
+  // ── Delete confirm state ──
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null)
 
   useEffect(() => {
     fetchProducts()
   }, [refreshKey])
 
-  // ── Existing fetch — UNCHANGED ──
+  // ── Existing fetch — loads all products so admin can toggle archived ──
   async function fetchProducts() {
     setLoading(true)
     const { data, error } = await supabase
@@ -211,19 +214,59 @@ function ProductList({ onEdit, refreshKey }: ProductListProps) {
     setLoading(false)
   }
 
-  // ── Existing delete — UNCHANGED logic, replaced confirm/alert with toast ──
+  // ── Delete handler with soft-delete (archive) fallback on FK violation (23503) ──
   async function handleDelete(id: string) {
     const { error } = await supabase.from('products').delete().eq('id', id)
     if (error) {
-      showToast('Failed to delete: ' + error.message, 'error')
+      // Postgres error code '23503' = foreign_key_violation
+      if (
+        error.code === '23503' ||
+        (error as any)?.code === '23503' ||
+        error.message?.includes('23503') ||
+        error.message?.toLowerCase().includes('violates foreign key constraint')
+      ) {
+        const { error: archiveError } = await supabase
+          .from('products')
+          .update({ is_archived: true })
+          .eq('id', id)
+
+        if (archiveError) {
+          showToast('Failed to archive: ' + archiveError.message, 'error')
+        } else {
+          await fetchProducts()
+          showToast(
+            t('admin.archivedInsteadToast', 'This product has orders, so it was archived instead of deleted.'),
+            'success'
+          )
+        }
+      } else {
+        showToast('Failed to delete: ' + error.message, 'error')
+      }
     } else {
       setProducts((prev) => prev.filter((p) => p.id !== id))
-      showToast('Product deleted successfully.', 'success')
+      showToast(t('admin.productDeletedToast', 'Product deleted successfully.'), 'success')
     }
     setDeletingProduct(null)
   }
 
-  // ── Existing toggleSold — UNCHANGED logic ──
+  // ── Restore handler to un-archive product ──
+  async function handleRestore(product: Product) {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_archived: false })
+      .eq('id', product.id)
+
+    if (error) {
+      showToast('Failed to restore: ' + error.message, 'error')
+    } else {
+      setProducts((prev) =>
+        prev.map((p) => (p.id === product.id ? { ...p, is_archived: false } : p))
+      )
+      showToast(t('admin.productRestoredToast', 'Product restored successfully.'), 'success')
+    }
+  }
+
+  // ── Existing toggleSold ──
   async function toggleSold(product: Product) {
     const { error } = await supabase
       .from('products')
@@ -243,22 +286,33 @@ function ProductList({ onEdit, refreshKey }: ProductListProps) {
     }
   }
 
-  // ── Get distinct categories and materials from fetched products ──
+  // ── Get distinct categories and materials from products ──
   const categories = useMemo(() => {
-    const cats = new Set(products.map((p) => p.category).filter((c): c is string => Boolean(c)))
+    const cats = new Set(
+      products
+        .filter((p) => showArchived || !p.is_archived)
+        .map((p) => p.category)
+        .filter((c): c is string => Boolean(c))
+    )
     return Array.from(cats).sort()
-  }, [products])
+  }, [products, showArchived])
 
   const materials = useMemo(() => {
-    const mats = new Set(products.map((p) => p.material).filter((m): m is string => Boolean(m)))
+    const mats = new Set(
+      products
+        .filter((p) => showArchived || !p.is_archived)
+        .map((p) => p.material)
+        .filter((m): m is string => Boolean(m))
+    )
     return Array.from(mats).sort()
-  }, [products])
+  }, [products, showArchived])
 
   // ── Client-side filtered + sorted list (new — no DB queries) ──
   const displayedProducts = useMemo(() => {
-    let filtered = products.filter((p) =>
-      p.name.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+    let filtered = products.filter((p) => {
+      if (!showArchived && p.is_archived) return false
+      return p.name.toLowerCase().includes(searchQuery.toLowerCase())
+    })
 
     // Apply category filter
     if (categoryFilter !== 'all') {
@@ -302,7 +356,7 @@ function ProductList({ onEdit, refreshKey }: ProductListProps) {
     }
 
     return filtered
-  }, [products, searchQuery, sortOption, categoryFilter, materialFilter, availabilityFilter])
+  }, [products, searchQuery, sortOption, categoryFilter, materialFilter, availabilityFilter, showArchived])
 
   if (loading)
     return (
@@ -517,8 +571,44 @@ function ProductList({ onEdit, refreshKey }: ProductListProps) {
           <option value="sold">Sold</option>
         </select>
 
+        {/* Show archived toggle */}
+        <label
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 7,
+            padding: '9px 12px',
+            border: `1px solid ${showArchived ? '#B8874B' : '#E4DDD1'}`,
+            borderRadius: 2,
+            background: showArchived ? 'rgba(184,135,75,0.08)' : '#FAF7F2',
+            fontSize: 12,
+            fontWeight: 600,
+            color: showArchived ? '#8C6228' : '#4A3728',
+            cursor: 'pointer',
+            fontFamily: 'Inter, sans-serif',
+            letterSpacing: '0.04em',
+            transition: 'border-color 0.18s, background 0.18s',
+            userSelect: 'none',
+            flexShrink: 0,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+            style={{
+              accentColor: '#B8874B',
+              cursor: 'pointer',
+              width: 14,
+              height: 14,
+              margin: 0,
+            }}
+          />
+          <span>{t('admin.showArchived', 'Show archived')}</span>
+        </label>
+
         {/* Result count */}
-        {(searchQuery || sortOption !== 'newest' || categoryFilter !== 'all' || materialFilter !== 'all' || availabilityFilter !== 'all') && (
+        {(searchQuery || sortOption !== 'newest' || categoryFilter !== 'all' || materialFilter !== 'all' || availabilityFilter !== 'all' || showArchived) && (
           <span
             style={{
               fontSize: 11,
@@ -527,7 +617,7 @@ function ProductList({ onEdit, refreshKey }: ProductListProps) {
               whiteSpace: 'nowrap',
             }}
           >
-            {displayedProducts.length} of {products.length}
+            {displayedProducts.length} of {products.filter((p) => showArchived || !p.is_archived).length}
           </span>
         )}
       </div>
@@ -556,6 +646,7 @@ function ProductList({ onEdit, refreshKey }: ProductListProps) {
               onEdit={onEdit}
               onToggleSold={toggleSold}
               onDelete={setDeletingProduct}
+              onRestore={handleRestore}
             />
           )
         })}

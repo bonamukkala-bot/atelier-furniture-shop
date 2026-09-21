@@ -460,12 +460,12 @@ function AdminDashboardInner() {
       { data: ordersData },
       { data: productsData },
     ] = await Promise.all([
-      supabase.from('products').select('*', { count: 'exact', head: true }),
-      supabase.from('products').select('*', { count: 'exact', head: true }).eq('sold', false),
+      supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_archived', false),
+      supabase.from('products').select('*', { count: 'exact', head: true }).eq('sold', false).eq('is_archived', false),
       supabase.from('orders').select('*', { count: 'exact', head: true }),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('review_requested', false),
       supabase.from('orders').select('total, order_date, product_id, quantity'),
-      supabase.from('products').select('id, name, stock_qty'),
+      supabase.from('products').select('id, name, stock_qty, is_archived'),
     ])
 
     // Calculate total revenue
@@ -489,17 +489,17 @@ function AdminDashboardInner() {
     productSales.forEach((units, productId) => {
       if (units > maxUnits) {
         maxUnits = units
-        const product = (productsData ?? []).find((p) => p.id === productId)
+        const product = (productsData ?? []).find((p: any) => p.id === productId)
         if (product) {
           bestSellingProduct = { name: product.name, unitsSold: units }
         }
       }
     })
 
-    // Find low stock products (stock_qty > 0 and <= 2)
+    // Find low stock products (stock_qty > 0 and <= 2) excluding archived products
     const lowStockProducts = (productsData ?? [])
-      .filter((p) => p.stock_qty > 0 && p.stock_qty <= 2)
-      .map((p) => ({ name: p.name, stockQty: p.stock_qty }))
+      .filter((p: any) => !p.is_archived && p.stock_qty > 0 && p.stock_qty <= 2)
+      .map((p: any) => ({ name: p.name, stockQty: p.stock_qty }))
 
     setStats({
       totalProducts: totalProducts ?? 0,

@@ -77,6 +77,7 @@ function ProductDetailPage() {
       .from('products')
       .select('*')
       .eq('id', id)
+      .eq('is_archived', false)
       .single()
 
     if (productError || !productData) {

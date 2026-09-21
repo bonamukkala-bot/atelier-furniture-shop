@@ -7,9 +7,10 @@ interface ProductCardProps {
   onEdit: (product: Product) => void
   onToggleSold: (product: Product) => void
   onDelete: (product: Product) => void
+  onRestore?: (product: Product) => void
 }
 
-function ProductCard({ product, images, onEdit, onToggleSold, onDelete }: ProductCardProps) {
+function ProductCard({ product, images, onEdit, onToggleSold, onDelete, onRestore }: ProductCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [imageHovered, setImageHovered] = useState(false)
   const currentImageUrl = images[currentImageIndex] || product.image_url
@@ -26,13 +27,14 @@ function ProductCard({ product, images, onEdit, onToggleSold, onDelete }: Produc
     <div
       style={{
         background: '#FAF7F2',
-        border: '1px solid #E4DDD1',
+        border: product.is_archived ? '1px dashed #C8CFBB' : '1px solid #E4DDD1',
         borderRadius: 2,
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
         transition: 'box-shadow 0.2s',
         boxShadow: '0 1px 4px rgba(74,55,40,0.05)',
+        opacity: product.is_archived ? 0.88 : 1,
       }}
       onMouseEnter={(e) => (e.currentTarget.style.boxShadow = '0 4px 16px rgba(74,55,40,0.1)')}
       onMouseLeave={(e) => (e.currentTarget.style.boxShadow = '0 1px 4px rgba(74,55,40,0.05)')}
@@ -155,25 +157,45 @@ function ProductCard({ product, images, onEdit, onToggleSold, onDelete }: Produc
           >
             {product.name}
           </h3>
-          {product.sold && (
-            <span
-              style={{
-                background: 'rgba(192,82,60,0.1)',
-                color: '#C0523C',
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: '0.1em',
-                textTransform: 'uppercase',
-                padding: '3px 8px',
-                borderRadius: 2,
-                flexShrink: 0,
-                marginLeft: 8,
-                fontFamily: 'Inter, sans-serif',
-              }}
-            >
-              Sold
-            </span>
-          )}
+          <div style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {product.is_archived && (
+              <span
+                style={{
+                  background: 'rgba(107,114,89,0.15)',
+                  color: '#4A3728',
+                  border: '1px solid rgba(107,114,89,0.3)',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  padding: '3px 8px',
+                  borderRadius: 2,
+                  flexShrink: 0,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                Archived
+              </span>
+            )}
+            {product.sold && (
+              <span
+                style={{
+                  background: 'rgba(192,82,60,0.1)',
+                  color: '#C0523C',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  padding: '3px 8px',
+                  borderRadius: 2,
+                  flexShrink: 0,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                Sold
+              </span>
+            )}
+          </div>
         </div>
 
         <p
@@ -266,27 +288,51 @@ function ProductCard({ product, images, onEdit, onToggleSold, onDelete }: Produc
         >
           {product.sold ? 'Mark Unsold' : 'Mark Sold'}
         </button>
-        <button
-          onClick={() => onDelete(product)}
-          style={{
-            padding: '7px 10px',
-            background: 'rgba(192,82,60,0.08)',
-            color: '#C0523C',
-            border: '1px solid rgba(192,82,60,0.25)',
-            borderRadius: 2,
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
-            cursor: 'pointer',
-            fontFamily: 'Inter, sans-serif',
-            transition: 'background 0.18s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(192,82,60,0.14)')}
-          onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(192,82,60,0.08)')}
-        >
-          Delete
-        </button>
+        {product.is_archived ? (
+          <button
+            onClick={() => onRestore?.(product)}
+            style={{
+              padding: '7px 10px',
+              background: 'rgba(184,135,75,0.12)',
+              color: '#8C6228',
+              border: '1px solid rgba(184,135,75,0.35)',
+              borderRadius: 2,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              fontFamily: 'Inter, sans-serif',
+              transition: 'background 0.18s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(184,135,75,0.22)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(184,135,75,0.12)')}
+          >
+            Restore
+          </button>
+        ) : (
+          <button
+            onClick={() => onDelete(product)}
+            style={{
+              padding: '7px 10px',
+              background: 'rgba(192,82,60,0.08)',
+              color: '#C0523C',
+              border: '1px solid rgba(192,82,60,0.25)',
+              borderRadius: 2,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              cursor: 'pointer',
+              fontFamily: 'Inter, sans-serif',
+              transition: 'background 0.18s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(192,82,60,0.14)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(192,82,60,0.08)')}
+          >
+            Delete
+          </button>
+        )}
       </div>
     </div>
   )

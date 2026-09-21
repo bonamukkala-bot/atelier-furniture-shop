@@ -90,6 +90,7 @@ export interface Product {
   compare_at_price?: number | null
   stock_qty: number
   sold: boolean
+  is_archived: boolean
   image_url: string | null
   created_at: string
 }
@@ -105,6 +106,7 @@ export interface NewProduct {
   compare_at_price?: number | null
   stock_qty: number
   sold: boolean
+  is_archived?: boolean
   image_url: string | null
 }
 

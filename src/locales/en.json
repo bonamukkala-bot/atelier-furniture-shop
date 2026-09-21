@@ -53,5 +53,15 @@
     "eyebrow": "Materials & Method",
     "title": "Subtle Craftsmanship",
     "body": "Our workshop respects traditional wood joinery techniques, ensuring structural longevity without visible screws or synthetic bonding agents. By using locally, sustainably sourced timber and partnering with skilled artisans in Hyderabad, we preserve a legacy of fine joinery in every joint."
+  },
+  "admin": {
+    "archived": "Archived",
+    "showArchived": "Show archived",
+    "hideArchived": "Hide archived",
+    "restore": "Restore",
+    "delete": "Delete",
+    "archivedInsteadToast": "This product has orders, so it was archived instead of deleted.",
+    "productRestoredToast": "Product restored successfully.",
+    "productDeletedToast": "Product deleted successfully."
   }
 }

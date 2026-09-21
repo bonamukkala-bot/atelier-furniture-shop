@@ -73,6 +73,7 @@ Deno.serve(async (req) => {
       .from('products')
       .select('name, category, material, price, stock_qty')
       .eq('sold', false)
+      .eq('is_archived', false)
 
     const productContext = (products ?? [])
       .map(

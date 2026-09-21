@@ -641,6 +641,7 @@ function StorefrontPage() {
       .from('products')
       .select('category, image_url, stock_qty')
       .eq('sold', false)
+      .eq('is_archived', false)
       .gt('stock_qty', 0)
       .not('category', 'is', null)
       .not('image_url', 'is', null)
@@ -687,6 +688,7 @@ function StorefrontPage() {
       .from('products')
       .select('*')
       .eq('sold', false)
+      .eq('is_archived', false)
       .order('created_at', { ascending: false })
 
     if (productsError) {

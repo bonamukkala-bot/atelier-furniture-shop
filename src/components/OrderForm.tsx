@@ -43,6 +43,7 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
           .from('products')
           .select('*')
           .eq('sold', false)
+          .eq('is_archived', false)
           .gt('stock_qty', 0)
           .order('name', { ascending: true }),
         supabase

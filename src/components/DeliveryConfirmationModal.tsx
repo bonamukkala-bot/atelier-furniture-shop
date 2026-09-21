@@ -543,9 +543,9 @@ export default function DeliveryConfirmationModal({
                 width: '100%',
                 background:
                   isVerifying ||
-                  isUploadingPhoto ||
-                  enteredCode.trim().length !== 6 ||
-                  (isPartnerPortal && !proofFile)
+                    isUploadingPhoto ||
+                    enteredCode.trim().length !== 6 ||
+                    (isPartnerPortal && !proofFile)
                     ? '#9CA3AF'
                     : '#4A5D3E',
                 color: '#FFFFFF',
@@ -557,9 +557,9 @@ export default function DeliveryConfirmationModal({
                 letterSpacing: '0.04em',
                 cursor:
                   isVerifying ||
-                  isUploadingPhoto ||
-                  enteredCode.trim().length !== 6 ||
-                  (isPartnerPortal && !proofFile)
+                    isUploadingPhoto ||
+                    enteredCode.trim().length !== 6 ||
+                    (isPartnerPortal && !proofFile)
                     ? 'not-allowed'
                     : 'pointer',
                 display: 'flex',
@@ -572,8 +572,8 @@ export default function DeliveryConfirmationModal({
               {isUploadingPhoto
                 ? 'Uploading Proof Photo...'
                 : isVerifying
-                ? 'Verifying Code...'
-                : 'Verify Code & Confirm Delivery'}
+                  ? 'Verifying Code...'
+                  : 'Verify Code & Confirm Delivery'}
             </button>
           </form>
         </div>
