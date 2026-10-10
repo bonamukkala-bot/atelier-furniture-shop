@@ -53,7 +53,7 @@ function parseDimensions(value: string): DimensionRow[] | null {
 }
 
 function ProductDetailPage() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const [product, setProduct] = useState<Product | null>(null)
   const [images, setImages] = useState<string[]>([])

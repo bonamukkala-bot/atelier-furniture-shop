@@ -1,4 +1,4 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { CONTACT_PHONE } from './StorefrontPage'
 import { buildWhatsAppLink } from '../lib/whatsapp'
@@ -30,7 +30,6 @@ const policyMeta: Record<PolicyType, { titleKey: string; defaultTitle: string; s
 
 export default function PolicyPage({ type }: PolicyPageProps) {
   const { t } = useTranslation()
-  const location = useLocation()
   const meta = policyMeta[type] || policyMeta.privacy
   const title = t(meta.titleKey) || meta.defaultTitle
 

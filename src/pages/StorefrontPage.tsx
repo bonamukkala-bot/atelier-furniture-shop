@@ -21,7 +21,6 @@ import {
 
 // Text constant for the contact number
 export const CONTACT_PHONE = "+91 90149 96929"
-const SHOP_LOCATION_TEXT = "Visit our furniture shop in Hyderabad"
 
 // Hero video assets
 const HERO_VIDEO_SRC = '/hero-video.mp4'
@@ -196,7 +195,7 @@ function ProductCard({ product, allImages }: ProductCardProps) {
   const currentImageUrl = images[currentImageIndex] || product.image_url
 
   // Swipe gesture handlers
-  const handleDragEnd = (_e: any, { offset, velocity }: any) => {
+  const handleDragEnd = (_e: unknown, { offset, velocity }: { offset: { x: number }; velocity: { x: number } }) => {
     const swipe = swipePower(offset.x, velocity.x)
     if (swipe < -10000 && currentImageIndex < images.length - 1) {
       setDirection(1)
@@ -666,7 +665,6 @@ function StorefrontPage() {
   }
   const [productImages, setProductImages] = useState<Record<string, string[]>>({})
   const [categoryPreviews, setCategoryPreviews] = useState<CategoryPreview[]>([])
-  const [isMobile, setIsMobile] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
 
@@ -790,13 +788,6 @@ function StorefrontPage() {
   }, [])
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768)
-    checkMobile()
-    window.addEventListener('resize', checkMobile)
-    return () => window.removeEventListener('resize', checkMobile)
-  }, [])
-
-  useEffect(() => {
     fetchProducts()
     fetchCategoryPreviews()
   }, [])
@@ -844,7 +835,7 @@ function StorefrontPage() {
 
   // Filter and sort products based on active category and sort query params
   const filteredAndSortedProducts = useMemo(() => {
-    let result =
+    const result =
       selectedCategory === 'All'
         ? [...products]
         : products.filter(
