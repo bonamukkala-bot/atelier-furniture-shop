@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabaseClient'
 import type { Product } from '../lib/types'
 import { getOptimizedImageUrl } from '../lib/imageOptimization'
 import { CONTACT_PHONE } from './StorefrontPage'
+import { buildWhatsAppLink, trackEnquiryClick } from '../lib/whatsapp'
 import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
 import DeliveryChecker from '../components/DeliveryChecker'
@@ -157,9 +158,12 @@ function ProductDetailPage() {
 
   const enquireOnWhatsApp = () => {
     if (!product) return
-    const phone = CONTACT_PHONE.replace(/\D/g, '')
-    const message = `Hi! I'm interested in the ${product.name} (₹${formatPrice(product.price)}). Could you share more details?`
-    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
+    trackEnquiryClick(product.id, 'product_detail_whatsapp')
+    const whatsappUrl = buildWhatsAppLink({
+      product,
+      language: i18n.language,
+    })
+    window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
   }
 
   if (loading) {

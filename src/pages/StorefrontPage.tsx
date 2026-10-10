@@ -1,12 +1,14 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { supabase } from '../lib/supabaseClient'
 import type { Product } from '../lib/types'
 import { getOptimizedImageUrl } from '../lib/imageOptimization'
-import ChatWidget from '../components/ChatWidget'
+import { SHOP_INFO } from '../lib/constants'
+import FloatingContactControl from '../components/FloatingContactControl'
 import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
+import CustomerReviews from '../components/CustomerReviews'
 import {
   motion,
   useMotionValue,
@@ -80,6 +82,8 @@ function ProductCard({ product, allImages }: ProductCardProps) {
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [direction, setDirection] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [imageLoaded, setImageLoaded] = useState(false)
+  const [imageError, setImageError] = useState(false)
   const images = allImages[product.id] || (product.image_url ? [product.image_url] : [])
   const shouldReduceMotion = useReducedMotion()
   const x = useMotionValue(0)
@@ -106,13 +110,13 @@ function ProductCard({ product, allImages }: ProductCardProps) {
 
   // Spring configurations for 3D tilt
   const springConfig = { damping: 25, stiffness: 200, mass: 0.5 }
-  const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [8, -8]), springConfig)
-  const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-8, 8]), springConfig)
+  const rotateX = useSpring(useTransform(y, [-0.5, 0.5], [6, -6]), springConfig)
+  const rotateY = useSpring(useTransform(x, [-0.5, 0.5], [-6, 6]), springConfig)
 
   // Motion templates for the glossy shine
   const percentX = useTransform(x, [-0.5, 0.5], [0, 100])
   const percentY = useTransform(y, [-0.5, 0.5], [0, 100])
-  const shineBg = useMotionTemplate`radial-gradient(circle at ${percentX}% ${percentY}%, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0) 65%)`
+  const shineBg = useMotionTemplate`radial-gradient(circle at ${percentX}% ${percentY}%, rgba(255, 255, 255, 0.25) 0%, rgba(255, 255, 255, 0) 65%)`
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (shouldReduceMotion) return
@@ -136,31 +140,26 @@ function ProductCard({ product, allImages }: ProductCardProps) {
     show: {
       opacity: 1,
       y: 0,
-          transition: {
-            duration: 0.45,
-          },
+      transition: {
+        duration: 0.45,
+      },
     },
   }
 
-  // Tag swing animation variants (rotates centered near the top-left hole)
-  const tagVariants = {
-    initial: { rotate: -6 },
-    hover: {
-      rotate: -2,
-      transition: { type: 'spring' as const, stiffness: 200, damping: 12 }
-    }
-  }
-
-  const hasDiscount = product.compare_at_price && product.compare_at_price > product.price
+  const hasDiscount = Boolean(product.compare_at_price && product.compare_at_price > product.price)
   const discountPercent = hasDiscount
     ? Math.round(((product.compare_at_price! - product.price) / product.compare_at_price!) * 100)
     : 0
+  const showDiscount = hasDiscount && discountPercent > 0
+
   const createdAt = new Date(product.created_at).getTime()
   const isNewArrival = !product.sold && Number.isFinite(createdAt) && createdAt >= Date.now() - 14 * 24 * 60 * 60 * 1000 && createdAt <= Date.now()
 
   const handlePrevImage = () => {
     if (currentImageIndex > 0) {
       setDirection(-1)
+      setImageLoaded(false)
+      setImageError(false)
       setCurrentImageIndex((prev) => prev - 1)
       // Reset auto-advance timer
       setIsPaused(true)
@@ -168,13 +167,15 @@ function ProductCard({ product, allImages }: ProductCardProps) {
     }
   }
 
-  const stopCardNavigation = (event: React.MouseEvent<HTMLButtonElement>) => {
+  const stopCardNavigation = (event: React.MouseEvent<HTMLElement>) => {
     event.stopPropagation()
   }
 
   const handleNextImage = () => {
     if (currentImageIndex < images.length - 1) {
       setDirection(1)
+      setImageLoaded(false)
+      setImageError(false)
       setCurrentImageIndex((prev) => prev + 1)
       // Reset auto-advance timer
       setIsPaused(true)
@@ -184,6 +185,8 @@ function ProductCard({ product, allImages }: ProductCardProps) {
 
   const handleDotClick = (idx: number) => {
     setDirection(idx > currentImageIndex ? 1 : -1)
+    setImageLoaded(false)
+    setImageError(false)
     setCurrentImageIndex(idx)
     // Reset auto-advance timer
     setIsPaused(true)
@@ -197,14 +200,16 @@ function ProductCard({ product, allImages }: ProductCardProps) {
     const swipe = swipePower(offset.x, velocity.x)
     if (swipe < -10000 && currentImageIndex < images.length - 1) {
       setDirection(1)
+      setImageLoaded(false)
+      setImageError(false)
       setCurrentImageIndex((prev) => prev + 1)
-      // Reset auto-advance timer
       setIsPaused(true)
       setTimeout(() => setIsPaused(false), 2000)
     } else if (swipe > 10000 && currentImageIndex > 0) {
       setDirection(-1)
+      setImageLoaded(false)
+      setImageError(false)
       setCurrentImageIndex((prev) => prev - 1)
-      // Reset auto-advance timer
       setIsPaused(true)
       setTimeout(() => setIsPaused(false), 2000)
     }
@@ -219,12 +224,10 @@ function ProductCard({ product, allImages }: ProductCardProps) {
     enter: (direction: number) => ({
       x: direction > 0 ? '100%' : '-100%',
       opacity: 0,
-      scale: 0.95,
     }),
     center: {
       x: 0,
       opacity: 1,
-      scale: 1,
       transition: {
         type: 'spring' as const,
         stiffness: 300,
@@ -234,7 +237,6 @@ function ProductCard({ product, allImages }: ProductCardProps) {
     exit: (direction: number) => ({
       x: direction < 0 ? '100%' : '-100%',
       opacity: 0,
-      scale: 0.95,
       transition: {
         type: 'spring' as const,
         stiffness: 300,
@@ -242,6 +244,8 @@ function ProductCard({ product, allImages }: ProductCardProps) {
       },
     }),
   }
+
+  const categoryEyebrow = (product.category && getCategoryDisplayName(product.category, t)) || 'FURNITURE'
 
   return (
     <motion.div
@@ -267,10 +271,15 @@ function ProductCard({ product, allImages }: ProductCardProps) {
         transformStyle: 'preserve-3d',
         perspective: 1000,
       }}
-      className="group relative bg-[#FAF7F2] rounded-none border border-[#E4DDD1] overflow-visible transition-shadow duration-300 hover:shadow-2xl flex flex-col justify-between"
+      className="group relative bg-[var(--bg)] rounded-none border border-[var(--border)] overflow-hidden transition-shadow duration-300 hover:shadow-2xl flex flex-col h-full cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]"
     >
-      {/* Image Container */}
-      <div className="relative w-full h-56 sm:h-64 bg-[#FAF7F2] overflow-hidden border-b border-[#E4DDD1]">
+      {/* 1:1 Aspect Ratio Image Container */}
+      <div className="relative w-full aspect-square bg-[#F5EFEB] overflow-hidden border-b border-[var(--border)]">
+        {/* Skeleton shimmer before image loads */}
+        {!imageLoaded && !imageError && currentImageUrl && (
+          <div className={`absolute inset-0 bg-[#EFE9DE] ${!shouldReduceMotion ? 'skeleton-shimmer' : ''}`} />
+        )}
+
         <AnimatePresence initial={false} custom={direction}>
           <motion.div
             key={currentImageIndex}
@@ -285,44 +294,51 @@ function ProductCard({ product, allImages }: ProductCardProps) {
             onDragEnd={handleDragEnd}
             className="absolute inset-0"
           >
-            {currentImageUrl ? (
-              <>
-                <img
-                  src={getOptimizedImageUrl(currentImageUrl, 800, 75)}
-                  alt=""
-                  aria-hidden="true"
-                  className="product-image-bg"
-                  draggable={false}
-                  loading="lazy"
-                />
-                <img
-                  src={getOptimizedImageUrl(currentImageUrl, 800, 80)}
-                  alt={product.name}
-                  className="product-image-fg product-image-grade"
-                  draggable={false}
-                  loading="lazy"
-                />
-              </>
+            {currentImageUrl && !imageError ? (
+              <img
+                key={currentImageUrl}
+                src={getOptimizedImageUrl(currentImageUrl, 800, 80)}
+                alt={product.name}
+                width={400}
+                height={400}
+                loading="lazy"
+                onLoad={() => setImageLoaded(true)}
+                onError={() => setImageError(true)}
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  imageLoaded ? 'opacity-100' : 'opacity-0'
+                }`}
+                draggable={false}
+              />
             ) : (
-              <div className="w-full h-full bg-[#E4DDD1]/30 flex items-center justify-center text-[#6B7259] font-inter text-sm">
-                No image
+              <div className="w-full h-full bg-[var(--bg)] flex flex-col items-center justify-center text-[var(--muted)] p-4 text-center">
+                <svg className="w-8 h-8 mb-2 opacity-50 text-[var(--muted)]" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+                <span className="font-inter text-xs">No image available</span>
               </div>
             )}
           </motion.div>
-          </AnimatePresence>
+        </AnimatePresence>
+
+        {/* Carousel controls render ONLY when images.length > 1 */}
+        {images.length > 1 && (
+          <>
+            {/* Left arrow */}
             <button
               type="button"
-              aria-label="Show previous product image"
+              aria-label="Previous image"
               onClick={(event) => {
                 stopCardNavigation(event)
                 handlePrevImage()
               }}
               disabled={currentImageIndex === 0}
-              className={`absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-8 sm:h-8 bg-white/80 hover:bg-white text-[#2B2420] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8874B]/80 transition-opacity duration-200 shadow-md ${
-                currentImageIndex === 0 ? 'opacity-30 cursor-not-allowed' : ''
+              className={`absolute left-2 top-1/2 -translate-y-1/2 w-[44px] h-[44px] min-w-[44px] min-h-[44px] bg-white/90 hover:bg-white text-[var(--ink)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] transition-opacity duration-200 shadow-md z-30 ${
+                currentImageIndex === 0 ? 'opacity-30 cursor-not-allowed pointer-events-none' : ''
               }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
               </svg>
             </button>
@@ -330,28 +346,28 @@ function ProductCard({ product, allImages }: ProductCardProps) {
             {/* Right arrow */}
             <button
               type="button"
-              aria-label="Show next product image"
+              aria-label="Next image"
               onClick={(event) => {
                 stopCardNavigation(event)
                 handleNextImage()
               }}
               disabled={currentImageIndex === images.length - 1}
-              className={`absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 sm:w-8 sm:h-8 bg-white/80 hover:bg-white text-[#2B2420] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#B8874B]/80 transition-opacity duration-200 shadow-md ${
-                currentImageIndex === images.length - 1 ? 'opacity-30 cursor-not-allowed' : ''
+              className={`absolute right-2 top-1/2 -translate-y-1/2 w-[44px] h-[44px] min-w-[44px] min-h-[44px] bg-white/90 hover:bg-white text-[var(--ink)] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] transition-opacity duration-200 shadow-md z-30 ${
+                currentImageIndex === images.length - 1 ? 'opacity-30 cursor-not-allowed pointer-events-none' : ''
               }`}
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
               </svg>
             </button>
 
             {/* Image count indicator */}
-            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded font-inter">
+            <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded font-inter pointer-events-none z-20">
               {currentImageIndex + 1}/{images.length}
             </div>
 
             {/* Dot indicators */}
-            <div className="absolute bottom-2 left-2 flex gap-1.5">
+            <div className="absolute bottom-2 left-2 flex gap-1.5 z-20">
               {images.map((_, idx) => (
                 <button
                   key={idx}
@@ -362,12 +378,14 @@ function ProductCard({ product, allImages }: ProductCardProps) {
                     stopCardNavigation(event)
                     handleDotClick(idx)
                   }}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    idx === currentImageIndex ? 'bg-white' : 'bg-white/50'
+                  className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                    idx === currentImageIndex ? 'bg-white shadow-sm' : 'bg-white/50 hover:bg-white/80'
                   }`}
                 />
               ))}
             </div>
+          </>
+        )}
 
         {/* 3D Glossy Shine Effect Overlay */}
         {!shouldReduceMotion && (
@@ -377,83 +395,114 @@ function ProductCard({ product, allImages }: ProductCardProps) {
           />
         )}
 
+        {/* Top-left corner discount ribbon */}
+        {showDiscount && (
+          <div className="absolute top-3 left-3 z-20 pointer-events-none">
+            <span className="bg-[var(--gold)] text-white font-inter text-[11px] font-bold tracking-wider uppercase px-2 py-1 rounded-sm shadow-sm">
+              -{discountPercent}%
+            </span>
+          </div>
+        )}
+
+        {/* New Arrival Badge */}
         {isNewArrival && (
-          <span className="absolute top-4 left-4 z-30 rounded-sm bg-[#B8874B] px-2.5 py-1.5 font-inter text-[10px] font-bold uppercase tracking-wider text-[#FAF7F2] shadow-md">
+          <span className="absolute top-3 right-3 z-20 bg-[var(--ink)] text-[var(--bg)] px-2.5 py-1 font-inter text-[10px] font-bold uppercase tracking-wider rounded-sm shadow-sm">
             New Arrival
           </span>
         )}
       </div>
 
-      {/* Swing Tag Price Badge - Perforated edge and top-left eyelet string */}
-      <motion.div
-        variants={tagVariants}
-        initial="initial"
-        style={{ transformOrigin: '20% 20%' }}
-        className="absolute top-4 right-4 z-30 drop-shadow-md pointer-events-none"
-      >
-        {/* Loop of string extending from top-left hole to top edge */}
-        <svg className="absolute -top-6 -left-3.5 w-12 h-10 overflow-visible" fill="none">
-          <path d="M 15 15 C 8 8, 4 4, -8 -12" stroke="#B8874B" strokeWidth="1.2" strokeLinecap="round" />
-        </svg>
-        {/* Tag Body (Dashed border simulating perforated/rough edge) */}
-        <div className="relative bg-[#FAF7F2] border border-dashed border-[#B8874B]/70 px-4 py-2.5 pt-5 text-center min-w-[85px] rounded-none flex flex-col items-center">
-          {/* Hole with metallic brass grommet in top-left */}
-          <div className="absolute top-2 left-2 w-2.5 h-2.5 rounded-full bg-[#FAF7F2] border border-[#B8874B] flex items-center justify-center">
-            <div className="w-1 h-1 rounded-full bg-[#E4DDD1]" />
-          </div>
-          {hasDiscount ? (
-            <div className="flex flex-col items-center gap-0.5 mt-1">
-              <span className="font-inter text-[9px] line-through text-[#6B7259] opacity-75">
+      {/* Info details */}
+      <div className="p-5 flex-grow flex flex-col">
+        {/* Consistent category eyebrow with fallback */}
+        <span className="text-[13px] uppercase tracking-[0.18em] text-[var(--gold)] font-inter font-semibold block mb-1">
+          {categoryEyebrow}
+        </span>
+
+        {/* Title clamped to 2 lines with reserved min-height for baseline alignment */}
+        <h3
+          title={product.name}
+          className="font-fraunces text-[20px] leading-[1.3] font-normal text-[var(--ink)] mb-2 group-hover:text-[var(--gold)] transition-colors duration-300 line-clamp-2 min-h-[2.6em]"
+        >
+          {product.name}
+        </h3>
+
+        {/* Price Block under title */}
+        <div className="flex items-baseline flex-wrap gap-x-2.5 gap-y-1 mb-2">
+          <span className="font-inter text-[22px] font-semibold text-[var(--ink)] leading-none">
+            ₹{formatPrice(product.price)}
+          </span>
+          {showDiscount && (
+            <>
+              <span className="font-inter text-[14px] text-[var(--muted)] line-through leading-none">
                 ₹{formatPrice(product.compare_at_price!)}
               </span>
-              <span className="font-inter text-xs font-bold tracking-wider text-[#4A3728]">
-                ₹{formatPrice(product.price)}
-              </span>
-              <span className="mt-1 px-1.5 py-0.5 text-[8px] font-bold tracking-wider uppercase bg-[#B8874B] text-[#FAF7F2] rounded-none">
+              <span className="font-inter text-[12px] font-semibold bg-[#F3E7D3] text-[#6B4A1C] px-2 py-0.5 rounded-[4px] leading-tight">
                 {discountPercent}% OFF
               </span>
-            </div>
-          ) : (
-            <span className="font-inter text-xs font-semibold tracking-wider text-[#4A3728] mt-1">
-              ₹{formatPrice(product.price)}
-            </span>
+            </>
           )}
-        </div>
-      </motion.div>
-
-      {/* Info details */}
-      <div className="p-5 flex-grow flex flex-col justify-between">
-        <div>
-          <span className="text-xs uppercase tracking-widest text-[#B8874B] font-inter font-semibold block mb-1">
-            {product.category && getCategoryDisplayName(product.category, t)}
+          <span className="sr-only">
+            {showDiscount
+              ? `Original price ₹${formatPrice(product.compare_at_price!)}, now ₹${formatPrice(product.price)}`
+              : `Price ₹${formatPrice(product.price)}`}
           </span>
-          <h3 className="font-fraunces text-xl font-normal text-[#2B2420] mb-2 group-hover:text-[#B8874B] transition-colors duration-300">
-            {product.name}
-          </h3>
         </div>
-        {product.material && (
-          <p className="text-xs text-[#6B7259] font-inter border-t border-[#E4DDD1]/60 pt-2 mt-2">
-            Material: {product.material}
+
+        {/* Material line */}
+        {product.material ? (
+          <p className="text-[14px] text-[var(--muted)] font-inter line-clamp-2 min-h-[1.5em] mt-auto pt-2 border-t border-[var(--border)]/60">
+            <span className="font-medium text-[var(--ink)]/80">Material:</span> {product.material}
           </p>
+        ) : (
+          <div className="min-h-[1.5em] mt-auto pt-2" aria-hidden="true" />
         )}
       </div>
 
-      <div className="flex justify-end border-t border-[#E4DDD1]/60 px-4 py-3">
-        <ProductQuickActions product={product} phone={CONTACT_PHONE} compact />
+      {/* Actions row with margin-top auto for aligned buttons */}
+      <div className="border-t border-[var(--border)] px-4 py-3 mt-auto bg-[var(--bg)]">
+        <ProductQuickActions product={product} />
       </div>
     </motion.div>
   )
 }
 
+interface SectionHeaderProps {
+  eyebrow: string
+  title: string
+  subtitle?: string
+  className?: string
+}
+
+function SectionHeader({ eyebrow, title, subtitle, className = '' }: SectionHeaderProps) {
+  return (
+    <div className={`text-center max-w-3xl mx-auto mb-10 sm:mb-12 ${className}`}>
+      <span className="text-[13px] font-semibold tracking-[0.18em] uppercase text-[var(--gold)] mb-3 block font-inter">
+        {eyebrow}
+      </span>
+      <h2 className="text-[clamp(28px,4vw,40px)] font-fraunces font-normal text-[var(--ink)] leading-tight">
+        {title}
+      </h2>
+      {subtitle && (
+        <p className="mt-3 text-sm sm:text-base text-[var(--muted)] font-inter leading-relaxed max-w-xl mx-auto">
+          {subtitle}
+        </p>
+      )}
+    </div>
+  )
+}
+
 function SkeletonFeaturedCard({ animate }: { animate: boolean }) {
   return (
-    <div className="relative flex-shrink-0 w-[280px] sm:w-[350px] md:w-[450px] h-[350px] sm:h-[450px] md:h-[500px] rounded-lg overflow-hidden border border-[#E4DDD1] bg-[#FAF7F2]">
-      <div className={`absolute inset-0 ${animate ? 'skeleton-shimmer' : 'bg-[#FBF8F3]'}`} />
-      <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 pointer-events-none">
-        <div className="space-y-3">
-          <div className="h-6 w-2/3 rounded-full bg-[#FBF8F3] border border-[#E4DDD1]" />
-          <div className="h-5 w-1/3 rounded-full bg-[#FBF8F3] border border-[#E4DDD1]" />
-        </div>
+    <div className="snap-start flex-shrink-0 w-[280px] sm:w-[320px] md:w-[360px] rounded-lg overflow-hidden border border-[var(--border)] bg-white flex flex-col shadow-sm">
+      <div className={`aspect-[4/3] sm:aspect-square bg-[#EFE9DE] ${animate ? 'skeleton-shimmer' : ''}`} />
+      <div className="p-5 space-y-3 flex-grow">
+        <div className="h-3 w-1/3 rounded-full bg-[#EFE9DE]" />
+        <div className="h-5 w-3/4 rounded-full bg-[#EFE9DE]" />
+        <div className="h-5 w-1/4 rounded-full bg-[#EFE9DE]" />
+      </div>
+      <div className="p-5 pt-0">
+        <div className="h-4 w-1/3 rounded-full bg-[#EFE9DE]" />
       </div>
     </div>
   )
@@ -473,15 +522,16 @@ function SkeletonCategoryCircle({ animate }: { animate: boolean }) {
 
 function SkeletonCollectionCard({ animate }: { animate: boolean }) {
   return (
-    <div className="bg-[#FAF7F2] rounded-none border border-[#E4DDD1] overflow-hidden">
-      <div className={`h-56 sm:h-64 bg-[#FBF8F3] ${animate ? 'skeleton-shimmer' : ''}`} />
-      <div className="p-5 space-y-3">
-        <div className="h-5 w-3/4 rounded-full bg-[#FBF8F3]" />
-        <div className="h-4 w-1/2 rounded-full bg-[#FBF8F3]" />
-        <div className="h-4 w-1/4 rounded-full bg-[#FBF8F3]" />
+    <div className="bg-[var(--bg)] rounded-none border border-[var(--border)] overflow-hidden flex flex-col h-full">
+      <div className={`w-full aspect-square bg-[#EFE9DE] ${animate ? 'skeleton-shimmer' : ''}`} />
+      <div className="p-5 space-y-3 flex-grow">
+        <div className="h-3 w-1/3 rounded-full bg-[#EFE9DE]" />
+        <div className="h-5 w-3/4 rounded-full bg-[#EFE9DE]" />
+        <div className="h-6 w-1/2 rounded-full bg-[#EFE9DE]" />
+        <div className="h-4 w-1/3 rounded-full bg-[#EFE9DE]" />
       </div>
-      <div className="border-t border-[#E4DDD1]/60 p-4">
-        <div className="h-4 w-1/3 rounded-full bg-[#FBF8F3]" />
+      <div className="border-t border-[var(--border)] p-4 mt-auto">
+        <div className="h-8 w-1/3 ml-auto rounded bg-[#EFE9DE]" />
       </div>
     </div>
   )
@@ -573,7 +623,7 @@ function CollectionRevealGrid({ children }: { children: ReactNode }) {
       variants={containerVariants}
       initial={shouldReduceMotion ? false : 'hidden'}
       animate={show ? 'show' : 'hidden'}
-      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 md:gap-10"
+      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch"
     >
       {children}
     </motion.div>
@@ -587,7 +637,33 @@ function StorefrontPage() {
   const [loading, setLoading] = useState(true)
   const [categoryLoading, setCategoryLoading] = useState(true)
   const [error, setError] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string>('All')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const selectedCategory = searchParams.get('category') || 'All'
+  const selectedSort = searchParams.get('sort') || 'featured'
+
+  const handleCategoryChange = (cat: string) => {
+    const params = new URLSearchParams(searchParams)
+    if (!cat || cat === 'All') {
+      params.delete('category')
+    } else {
+      params.set('category', cat)
+    }
+    setSearchParams(params, { replace: false })
+  }
+
+  const handleSortChange = (sort: string) => {
+    const params = new URLSearchParams(searchParams)
+    if (!sort || sort === 'featured') {
+      params.delete('sort')
+    } else {
+      params.set('sort', sort)
+    }
+    setSearchParams(params, { replace: false })
+  }
+
+  const handleClearFilters = () => {
+    setSearchParams({}, { replace: false })
+  }
   const [productImages, setProductImages] = useState<Record<string, string[]>>({})
   const [categoryPreviews, setCategoryPreviews] = useState<CategoryPreview[]>([])
   const [isMobile, setIsMobile] = useState(false)
@@ -669,6 +745,50 @@ function StorefrontPage() {
     setCategoryLoading(false)
   }
 
+  const [isScrolled, setIsScrolled] = useState(false)
+  const [activeSection, setActiveSection] = useState<string>('collection')
+
+  useEffect(() => {
+    let ticking = false
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          setIsScrolled(window.scrollY > 40)
+          ticking = false
+        })
+        ticking = true
+      }
+    }
+
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    handleScroll()
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  useEffect(() => {
+    const sectionIds = ['collection', 'about-us', 'visit-us']
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setActiveSection(entry.target.id)
+          }
+        })
+      },
+      {
+        rootMargin: '-20% 0px -60% 0px',
+        threshold: 0,
+      }
+    )
+
+    sectionIds.forEach((id) => {
+      const el = document.getElementById(id)
+      if (el) observer.observe(el)
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768)
     checkMobile()
@@ -722,15 +842,63 @@ function StorefrontPage() {
 
   const categories = ['All', ...categoryPreviews.map((category) => category.name)]
 
-  // Filter products matching normalized category casing
-  const filteredProducts =
-    selectedCategory === 'All'
-      ? products
-      : products.filter(
-          (p) => p.category && formatCategoryName(p.category) === selectedCategory
-        )
+  // Filter and sort products based on active category and sort query params
+  const filteredAndSortedProducts = useMemo(() => {
+    let result =
+      selectedCategory === 'All'
+        ? [...products]
+        : products.filter(
+            (p) => p.category && formatCategoryName(p.category).toLowerCase() === selectedCategory.toLowerCase()
+          )
+
+    switch (selectedSort) {
+      case 'price-asc':
+        result.sort((a, b) => a.price - b.price)
+        break
+      case 'price-desc':
+        result.sort((a, b) => b.price - a.price)
+        break
+      case 'newest':
+        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        break
+      case 'featured':
+      default:
+        result.sort((a, b) => {
+          if (a.featured && !b.featured) return -1
+          if (!a.featured && b.featured) return 1
+          return 0
+        })
+        break
+    }
+    return result
+  }, [products, selectedCategory, selectedSort])
 
   const shouldReduceMotion = useReducedMotion()
+  const featuredTrackRef = useRef<HTMLDivElement>(null)
+
+  const handleFeaturedScroll = (direction: 'left' | 'right') => {
+    if (!featuredTrackRef.current) return
+    const scrollAmount = 340
+    featuredTrackRef.current.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: shouldReduceMotion ? 'auto' : 'smooth',
+    })
+  }
+
+  const handleFeaturedKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      handleFeaturedScroll('left')
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      handleFeaturedScroll('right')
+    }
+  }
+
+  // Use products with explicit featured flag if present, otherwise highlight the top 4 flagship pieces
+  const featuredProducts = products.filter((p) => p.featured).length > 0
+    ? products.filter((p) => p.featured).slice(0, 4)
+    : products.slice(0, 4)
 
   if (error) {
     return (
@@ -744,66 +912,103 @@ function StorefrontPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF7F2] text-[#2B2420] selection:bg-[#B8874B] selection:text-[#FAF7F2]">
-      {/* Premium Header - Admin access button removed */}
-      <header className="sticky top-0 z-50 bg-[#FAF7F2]/90 backdrop-blur-md border-b border-[#E4DDD1] py-4 sm:py-5 px-4 sm:px-8 flex justify-between items-center" ref={mobileMenuRef}>
-        <div className="flex flex-col">
-          <span className="font-fraunces text-xl sm:text-2xl font-semibold tracking-tight text-[#2B2420]">ATELIER</span>
-          <span className="text-[9px] sm:text-[10px] tracking-widest text-[#B8874B] font-inter uppercase">FINE FURNITURE</span>
-        </div>
-        <div className="hidden md:flex items-center gap-3 lg:gap-4">
-          <nav className="flex items-center space-x-5 sm:space-x-6 text-xs font-semibold tracking-wider uppercase text-[#6B7259]">
-          <a
-            href="#collection"
-            onClick={(e) => {
-              e.preventDefault()
-              document.getElementById('collection')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
-            }}
-            className="hover:text-[#B8874B] transition-colors py-2 relative group"
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--ink)] selection:bg-[var(--gold-decorative)] selection:text-[var(--bg)] flex flex-col justify-between pb-16 sm:pb-0">
+      {/* Skip to main content link as the first focusable element */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:px-4 focus:py-2.5 focus:bg-[var(--bg)] focus:text-[var(--ink)] focus:border-2 focus:border-[var(--gold)] focus:shadow-lg focus:font-semibold focus:text-sm"
+      >
+        Skip to content
+      </a>
+
+      {/* Sticky Header with height shrinking on scroll */}
+      <header
+        ref={mobileMenuRef}
+        className={`site-header ${isScrolled ? 'is-scrolled' : ''} px-4 sm:px-8 flex justify-between items-center`}
+      >
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault()
+            window.scrollTo({ top: 0, behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+          }}
+          className="flex flex-col justify-center min-h-[44px] group"
+          aria-label="Atelier Fine Furniture Home"
+        >
+          <span
+            className={`font-fraunces font-semibold tracking-tight text-[var(--ink)] group-hover:text-[var(--gold)] transition-all leading-none ${
+              isScrolled ? 'text-[24px]' : 'text-[28px]'
+            }`}
           >
-            <span className="relative z-10">Shop</span>
-            <motion.span
-              className="absolute bottom-0 left-0 h-px bg-[#B8874B] w-0 group-hover:w-full transition-all duration-300 ease-out"
-              initial={false}
-              whileHover={{ width: '100%' }}
-              style={{ width: shouldReduceMotion ? '100%' : undefined }}
-            />
-          </a>
-          <a
-            href="#about-us"
-            onClick={(e) => {
-              e.preventDefault()
-              document.getElementById('about-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
-            }}
-            className="hover:text-[#B8874B] transition-colors py-2 relative group"
-          >
-            <span className="relative z-10">About Us</span>
-            <motion.span
-              className="absolute bottom-0 left-0 h-px bg-[#B8874B] w-0 group-hover:w-full transition-all duration-300 ease-out"
-              initial={false}
-              whileHover={{ width: '100%' }}
-              style={{ width: shouldReduceMotion ? '100%' : undefined }}
-            />
-          </a>
-          <a
-            href="#visit-us"
-            onClick={(e) => {
-              e.preventDefault()
-              document.getElementById('visit-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
-            }}
-            className="hover:text-[#B8874B] transition-colors py-2 relative group"
-          >
-            <span className="relative z-10">Contact Us</span>
-            <motion.span
-              className="absolute bottom-0 left-0 h-px bg-[#B8874B] w-0 group-hover:w-full transition-all duration-300 ease-out"
-              initial={false}
-              whileHover={{ width: '100%' }}
-              style={{ width: shouldReduceMotion ? '100%' : undefined }}
-            />
-          </a>
+            ATELIER
+          </span>
+          {!isScrolled && (
+            <span className="text-[11px] font-semibold tracking-[0.2em] text-[var(--gold)] font-inter uppercase mt-1">
+              FINE FURNITURE
+            </span>
+          )}
+        </a>
+
+        <div className="hidden md:flex items-center gap-4 lg:gap-6">
+          <nav className="flex items-center space-x-4 lg:space-x-6 text-[14px] font-medium uppercase tracking-wider text-[var(--muted)]">
+            <a
+              href="#collection"
+              onClick={(e) => {
+                e.preventDefault()
+                document.getElementById('collection')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+              }}
+              aria-current={activeSection === 'collection' ? 'true' : undefined}
+              className={`min-h-[44px] flex items-center py-2 px-1 relative transition-colors ${
+                activeSection === 'collection' ? 'text-[var(--ink)] font-semibold' : 'text-[var(--muted)] hover:text-[var(--gold)]'
+              }`}
+            >
+              <span className="relative z-10">Shop</span>
+              <span
+                className={`absolute bottom-1 left-0 h-0.5 bg-[var(--gold)] transition-all duration-300 ${
+                  activeSection === 'collection' ? 'w-full' : 'w-0 hover:w-full'
+                }`}
+              />
+            </a>
+            <a
+              href="#about-us"
+              onClick={(e) => {
+                e.preventDefault()
+                document.getElementById('about-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+              }}
+              aria-current={activeSection === 'about-us' ? 'true' : undefined}
+              className={`min-h-[44px] flex items-center py-2 px-1 relative transition-colors ${
+                activeSection === 'about-us' ? 'text-[var(--ink)] font-semibold' : 'text-[var(--muted)] hover:text-[var(--gold)]'
+              }`}
+            >
+              <span className="relative z-10">About Us</span>
+              <span
+                className={`absolute bottom-1 left-0 h-0.5 bg-[var(--gold)] transition-all duration-300 ${
+                  activeSection === 'about-us' ? 'w-full' : 'w-0 hover:w-full'
+                }`}
+              />
+            </a>
+            <a
+              href="#visit-us"
+              onClick={(e) => {
+                e.preventDefault()
+                document.getElementById('visit-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+              }}
+              aria-current={activeSection === 'visit-us' ? 'true' : undefined}
+              className={`min-h-[44px] flex items-center py-2 px-1 relative transition-colors ${
+                activeSection === 'visit-us' ? 'text-[var(--ink)] font-semibold' : 'text-[var(--muted)] hover:text-[var(--gold)]'
+              }`}
+            >
+              <span className="relative z-10">Contact Us</span>
+              <span
+                className={`absolute bottom-1 left-0 h-0.5 bg-[var(--gold)] transition-all duration-300 ${
+                  activeSection === 'visit-us' ? 'w-full' : 'w-0 hover:w-full'
+                }`}
+              />
+            </a>
           </nav>
           <LanguageToggle />
         </div>
+
         {/* Mobile controls */}
         <div className="flex items-center gap-2 md:hidden">
           <LanguageToggle />
@@ -812,14 +1017,14 @@ function StorefrontPage() {
             onClick={() => setMobileMenuOpen((prev) => !prev)}
             aria-label={mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
             aria-expanded={mobileMenuOpen}
-            className="inline-flex items-center justify-center p-2 rounded border border-[#E4DDD1] bg-[#FAF7F2] text-[#2B2420] hover:text-[#B8874B] hover:border-[#B8874B] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#B8874B] transition-colors"
+            className="inline-flex items-center justify-center min-h-[44px] min-w-[44px] p-2.5 rounded border border-[var(--border)] bg-[var(--bg)] text-[var(--ink)] hover:text-[var(--gold)] hover:border-[var(--gold)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] transition-colors"
           >
             {mobileMenuOpen ? (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
               </svg>
             )}
@@ -834,26 +1039,26 @@ function StorefrontPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={shouldReduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
-              className="absolute top-full left-0 right-0 bg-[#FAF7F2] border-b border-[#E4DDD1] shadow-lg md:hidden z-50 px-6 py-4 flex flex-col space-y-2"
+              className="absolute top-full left-0 right-0 bg-[var(--bg)] border-b border-[var(--border)] shadow-lg md:hidden z-50 px-6 py-4 flex flex-col space-y-2"
             >
               <button
                 type="button"
                 onClick={() => handleMobileNavClick('collection')}
-                className="text-left font-inter text-xs uppercase tracking-widest font-semibold text-[#6B7259] hover:text-[#B8874B] transition-colors py-2 border-b border-[#E4DDD1]/50"
+                className="text-left font-inter text-[14px] uppercase tracking-[0.18em] font-semibold text-[var(--muted)] hover:text-[var(--gold)] transition-colors min-h-[44px] flex items-center border-b border-[var(--border)]"
               >
                 Shop
               </button>
               <button
                 type="button"
                 onClick={() => handleMobileNavClick('about-us')}
-                className="text-left font-inter text-xs uppercase tracking-widest font-semibold text-[#6B7259] hover:text-[#B8874B] transition-colors py-2 border-b border-[#E4DDD1]/50"
+                className="text-left font-inter text-[14px] uppercase tracking-[0.18em] font-semibold text-[var(--muted)] hover:text-[var(--gold)] transition-colors min-h-[44px] flex items-center border-b border-[var(--border)]"
               >
                 About Us
               </button>
               <button
                 type="button"
                 onClick={() => handleMobileNavClick('visit-us')}
-                className="text-left font-inter text-xs uppercase tracking-widest font-semibold text-[#6B7259] hover:text-[#B8874B] transition-colors py-2"
+                className="text-left font-inter text-[14px] uppercase tracking-[0.18em] font-semibold text-[var(--muted)] hover:text-[var(--gold)] transition-colors min-h-[44px] flex items-center"
               >
                 Contact Us
               </button>
@@ -862,13 +1067,16 @@ function StorefrontPage() {
         </AnimatePresence>
       </header>
 
+      {/* Main Content Area */}
+      <main id="main-content" className="flex-grow">
+
       {/* Redesigned Hero Section */}
       <motion.div
         variants={sectionVariants}
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
         viewport={{ once: true, amount: 0.18 }}
-        className="relative flex flex-col items-center justify-center text-center py-20 sm:py-28 md:py-36 px-4 sm:px-6 overflow-hidden border-b border-[#E4DDD1]"
+        className="hero-section relative flex flex-col items-center justify-center text-center py-20 sm:py-28 md:py-36 px-4 sm:px-6 overflow-hidden border-b border-[var(--border)]"
       >
         {/* Background Video - all viewports, respects reduced motion.
             Mobile autoplay requires muted + playsInline (iOS plays inline instead
@@ -885,7 +1093,7 @@ function StorefrontPage() {
             loop
             playsInline
             preload="metadata"
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover z-0"
           />
         )}
         {/* Fallback poster - shown when reduced motion is enabled, on any viewport */}
@@ -893,22 +1101,19 @@ function StorefrontPage() {
           <img
             src={HERO_POSTER_SRC}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-cover z-0"
           />
         )}
 
-        {/* Dark gradient overlay for text legibility */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/30 to-black/50 pointer-events-none" />
-
         {/* Content Overlay */}
         <div className="relative z-10 max-w-3xl mx-auto px-2">
-          <span className="text-[10px] sm:text-xs font-semibold tracking-widest text-[#B8874B] uppercase mb-3 sm:mb-4 block font-inter">
+          <span className="text-[14px] font-semibold tracking-[0.22em] text-[var(--gold-on-dark)] uppercase mb-3 sm:mb-4 block font-inter">
             Artisanal Integrity
           </span>
-          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-7xl font-fraunces font-light text-[#FAF7F2] tracking-tight leading-[1.1] sm:leading-[1.1] mb-6">
+          <h1 className="text-[clamp(40px,7vw,84px)] font-fraunces font-light text-[var(--bg)] tracking-tight leading-[1.05] mb-6 [text-shadow:0_2px_24px_rgba(0,0,0,0.35)]">
             Honest Materials.<br />Meticulous Joinery.
           </h1>
-          <p className="text-xs sm:text-sm md:text-base text-[#E4DDD1] font-inter max-w-xl mx-auto mb-8 sm:mb-10 leading-relaxed">
+          <p className="font-medium text-[clamp(16px,1.6vw,20px)] max-w-[560px] mx-auto text-white/95 font-inter leading-relaxed mb-8 sm:mb-10">
             Every piece is designed with restraint and built to endure, utilizing local woods and time-tested joinery techniques.
           </p>
           <motion.a
@@ -917,7 +1122,7 @@ function StorefrontPage() {
               e.preventDefault()
               document.getElementById('collection')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
             }}
-            className="inline-flex items-center justify-center px-5 sm:px-6 py-3 sm:py-3.5 border border-[#FAF7F2] text-[10px] sm:text-xs font-semibold uppercase tracking-wider text-[#2B2420] bg-[#FAF7F2] hover:bg-transparent hover:text-[#FAF7F2] transition-all duration-300 min-h-[44px]"
+            className="inline-flex items-center justify-center min-h-[48px] px-8 border border-[var(--bg)] text-xs font-semibold uppercase tracking-wider text-[var(--ink)] bg-[var(--bg)] hover:bg-transparent hover:text-[var(--bg)] transition-all duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] focus-visible:ring-offset-2"
             whileHover={!shouldReduceMotion ? { scale: 1.03, boxShadow: '0 4px 12px rgba(250, 247, 242, 0.3)' } : undefined}
             whileTap={!shouldReduceMotion ? { scale: 0.98 } : undefined}
             transition={shouldReduceMotion ? undefined : { type: 'spring', stiffness: 400, damping: 17 }}
@@ -927,178 +1132,159 @@ function StorefrontPage() {
         </div>
       </motion.div>
 
-      {/* Featured Pieces Showcase */}
+      {/* Featured Pieces Showcase (Editorial Highlight Strip) */}
       <motion.section
+        id="featured"
         variants={sectionVariants}
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
         viewport={{ once: true, amount: 0.18 }}
-        className="relative py-16 sm:py-20 bg-[#FAF7F2] overflow-hidden"
+        className="site-section bg-[var(--bg)] border-b border-[var(--border)] overflow-hidden"
       >
-        {/* Section Header */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 mb-8 sm:mb-12">
-          <motion.div
-            variants={containerVariants}
-            initial={shouldReduceMotion ? undefined : 'hidden'}
-            whileInView={shouldReduceMotion ? undefined : 'show'}
-            viewport={{ once: true, amount: 0.18 }}
-          >
-            <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-2 block font-inter">
-              Curated Pieces
-            </motion.span>
-            <motion.h2 variants={childVariants} className="text-2xl sm:text-3xl font-fraunces font-normal text-[#2B2420]">
-              The Collection
-            </motion.h2>
-          </motion.div>
-        </div>
+        <div className="site-container">
+          <SectionHeader
+            eyebrow="Curated Pieces"
+            title="Featured Highlights"
+            subtitle="Four signature handcrafted pieces representing our commitment to honest materials and subtle joinery."
+          />
 
-        {/* Horizontal Scrolling Showcase */}
-        <div className="relative">
-          {/* Scroll Container */}
-          <div className="overflow-x-auto scrollbar-hide">
-            <motion.div
-              className="flex gap-4 sm:gap-6 px-4 sm:px-6 pb-4"
-              animate={
-                !shouldReduceMotion && !isMobile
-                  ? {
-                      x: [0, -1000],
-                      transition: {
-                        x: {
-                          repeat: Infinity,
-                          repeatType: "loop",
-                          duration: 40,
-                          ease: "linear",
-                        },
-                      },
-                    }
-                  : {}
-              }
-              whileHover={
-                !shouldReduceMotion && !isMobile
-                  ? {
-                      x: [0, 0],
-                      transition: {
-                        x: {
-                          repeat: 0,
-                          duration: 0,
-                        },
-                      },
-                    }
-                  : {}
-              }
-              style={{ width: "max-content" }}
+          {/* Editorial Horizontal Strip with snap-mandatory and manual controls */}
+          <div className="relative">
+            {/* Prev / Next Navigation Buttons (Visible, 44x44) */}
+            <div className="hidden md:flex absolute -top-16 right-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleFeaturedScroll('left')}
+                aria-label="Previous featured piece"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full border border-[var(--border)] bg-white text-[var(--ink)] hover:bg-[var(--gold)] hover:text-white hover:border-[var(--gold)] flex items-center justify-center transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFeaturedScroll('right')}
+                aria-label="Next featured piece"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full border border-[var(--border)] bg-white text-[var(--ink)] hover:bg-[var(--gold)] hover:text-white hover:border-[var(--gold)] flex items-center justify-center transition-colors shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] cursor-pointer"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Scroll Container */}
+            <div
+              ref={featuredTrackRef}
+              tabIndex={0}
+              onKeyDown={handleFeaturedKeyDown}
+              role="region"
+              aria-roledescription="carousel"
+              aria-label="Featured furniture pieces"
+              className="flex gap-6 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-4 [scrollbar-width:none] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)]"
             >
-              {/* Featured Product Cards */}
               {loading
                 ? Array.from({ length: 4 }).map((_, idx) => (
                     <SkeletonFeaturedCard key={`featured-skeleton-${idx}`} animate={!shouldReduceMotion} />
                   ))
-                : products.slice(0, 6).map((product) => {
-                    // Match the catalog card's image source: use images from
-                    // product_images first, then the product's primary image_url.
+                : featuredProducts.map((product) => {
                     const images = productImages[product.id] || (product.image_url ? [product.image_url] : [])
-                    const coverImage = images[0] || product.image_url || ""
+                    const coverImage = images[0] || product.image_url || ''
                     const formattedPrice = `₹${formatPrice(product.price)}`
 
                     return (
-                      <motion.div
+                      <div
                         key={product.id}
-                        className="relative flex-shrink-0 w-[280px] sm:w-[350px] md:w-[450px] h-[350px] sm:h-[450px] md:h-[500px] rounded-lg overflow-hidden group cursor-pointer"
-                        onClick={() => navigate(`/product/${product.id}`)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            navigate(`/product/${product.id}`)
-                          }
-                        }}
-                        role="link"
-                        tabIndex={0}
-                        whileHover={!shouldReduceMotion ? { scale: 1.02 } : undefined}
-                        transition={shouldReduceMotion ? undefined : { duration: 0.3 }}
+                        className="snap-start flex-shrink-0 w-[280px] sm:w-[320px] md:w-[360px] group rounded-lg overflow-hidden bg-white border border-[var(--border)] flex flex-col shadow-sm transition-shadow duration-300 hover:shadow-xl"
                       >
-                        {/* Product Image */}
-                        {coverImage ? (
-                          <>
-                            <img
-                              src={getOptimizedImageUrl(coverImage, 800, 75)}
-                              alt=""
-                              aria-hidden="true"
-                              className="product-image-bg"
-                              loading="lazy"
-                            />
+                        {/* Image */}
+                        <div
+                          className="relative aspect-[4/3] sm:aspect-square overflow-hidden bg-[#F5EFEB] cursor-pointer"
+                          onClick={() => navigate(`/product/${product.id}`)}
+                        >
+                          {coverImage ? (
                             <img
                               src={getOptimizedImageUrl(coverImage, 800, 80)}
                               alt={product.name}
-                              className="product-image-fg product-image-grade"
                               loading="lazy"
+                              width={400}
+                              height={400}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                             />
-                          </>
-                        ) : (
-                          <div className="w-full h-full bg-[#E4DDD1] flex items-center justify-center">
-                            <span className="text-[#6B7259] font-inter text-sm">No image</span>
-                          </div>
-                        )}
-
-                        {/* Dark Gradient Overlay */}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-
-                        {/* Product Info Overlay */}
-                        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
-                          <h3 className="text-white font-fraunces text-lg sm:text-xl font-medium mb-2">
-                            {product.name}
-                          </h3>
-                          <p className="text-[#E4DDD1] font-inter text-sm sm:text-base">
-                            {formattedPrice}
-                          </p>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-[var(--muted)] font-inter text-sm">
+                              No image
+                            </div>
+                          )}
                         </div>
-                      </motion.div>
+
+                        {/* Details */}
+                        <div className="p-5 flex flex-col flex-grow justify-between bg-white">
+                          <div>
+                            <span className="text-[11px] font-semibold tracking-[0.18em] uppercase text-[var(--gold)] font-inter block mb-1">
+                              {(product.category && getCategoryDisplayName(product.category, t)) || 'FURNITURE'}
+                            </span>
+                            <h3
+                              onClick={() => navigate(`/product/${product.id}`)}
+                              className="font-fraunces text-lg sm:text-xl font-normal text-[var(--ink)] hover:text-[var(--gold)] transition-colors cursor-pointer line-clamp-1 mb-2"
+                              title={product.name}
+                            >
+                              {product.name}
+                            </h3>
+                            <p className="font-inter text-base font-semibold text-[var(--ink)] mb-4">
+                              {formattedPrice}
+                            </p>
+                          </div>
+
+                          {/* "View in catalog" link filtering to this category */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (product.category) {
+                                handleCategoryChange(formatCategoryName(product.category))
+                              }
+                              document.getElementById('collection')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+                            }}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--gold)] hover:text-[var(--ink)] transition-colors min-h-[44px] cursor-pointer"
+                          >
+                            <span>View in catalog</span>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
                     )
                   })}
-            </motion.div>
+            </div>
           </div>
         </div>
-
-        {/* Section-level wordmark: deliberately outside the scrolling card strip. */}
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-5 right-4 sm:bottom-6 sm:right-6 font-fraunces text-[10px] sm:text-xs font-semibold tracking-[0.3em] text-[#B8874B]/45"
-        >
-          ATELIER
-        </span>
       </motion.section>
 
       {/* Category Photo Navigation */}
-      <motion.div
+      <motion.section
+        id="categories"
         variants={sectionVariants}
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
         viewport={{ once: true, amount: 0.18 }}
-        className="border-b border-[#E4DDD1] py-10 sm:py-14 bg-[#FAF7F2]"
+        className="site-section bg-white border-b border-[var(--border)]"
       >
-        <div className="max-w-7xl mx-auto">
-          <motion.div
-            variants={containerVariants}
-            initial={shouldReduceMotion ? undefined : 'hidden'}
-            whileInView={shouldReduceMotion ? undefined : 'show'}
-            viewport={{ once: true, amount: 0.18 }}
-            className="text-center mb-8 sm:mb-10 px-4 sm:px-6"
-          >
-            <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-2 block font-inter">
-              {t('categorySection.browseCategories')}
-            </motion.span>
-            <motion.h2 variants={childVariants} className="text-xl sm:text-2xl font-fraunces font-normal text-[#2B2420]">
-              {t('categorySection.shopByCategory')}
-            </motion.h2>
-          </motion.div>
+        <div className="site-container">
+          <SectionHeader
+            eyebrow={t('categorySection.browseCategories')}
+            title={t('categorySection.shopByCategory')}
+          />
           
           <div className="overflow-x-auto scroll-smooth snap-x snap-mandatory [scrollbar-width:none] md:overflow-visible">
-            <div className="flex w-max items-start gap-6 px-4 pr-14 md:w-full md:justify-center md:gap-10 md:px-6 md:pr-6 lg:gap-12">
+            <div className="flex w-max items-start gap-6 px-2 pr-14 md:w-full md:justify-center md:gap-10 md:px-0 lg:gap-12">
               {categoryLoading
                 ? Array.from({ length: 6 }).map((_, idx) => (
                     <SkeletonCategoryCircle key={`category-skeleton-${idx}`} animate={!shouldReduceMotion} />
                   ))
                 : categories.map((cat) => {
-                    const isActive = selectedCategory === cat
+                    const isActive = selectedCategory.toLowerCase() === cat.toLowerCase() || (cat === 'All' && selectedCategory === 'All')
                     const displayName = cat === 'All' ? t('categorySection.allPieces') : getCategoryDisplayName(cat, t)
                     const preview = categoryPreviews.find((category) => category.name === cat)
 
@@ -1106,18 +1292,18 @@ function StorefrontPage() {
                       <button
                         key={cat}
                         onClick={() => {
-                          setSelectedCategory(cat)
+                          handleCategoryChange(cat)
                           document.getElementById('collection')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
                         }}
                         aria-pressed={isActive}
                         className="group flex w-[100px] shrink-0 snap-start flex-col items-center focus:outline-none cursor-pointer md:w-[140px]"
                       >
                         <motion.div
-                          className={`relative flex aspect-square w-[100px] overflow-hidden rounded-full border-2 shadow-[0_6px_16px_rgba(43,36,32,0.16)] transition-colors duration-300 md:w-[140px] ${
+                          className={`relative flex aspect-square w-[100px] overflow-hidden rounded-full border-2 shadow-[0_6px_16px_rgba(43,36,32,0.16)] transition-all duration-300 md:w-[140px] ${
                             isActive
-                              ? 'border-[#B8874B]'
-                              : 'border-[#B8874B]/70 group-hover:border-[#B8874B]'
-                          } ${cat === 'All' ? 'items-center justify-center bg-[#FAF7F2] text-[#B8874B]' : ''}`}
+                              ? 'border-[var(--gold)] ring-2 ring-[var(--gold)] ring-offset-2 ring-offset-white'
+                              : 'border-[var(--border)] group-hover:border-[var(--gold)]'
+                          } ${cat === 'All' ? 'items-center justify-center bg-[var(--bg)] text-[var(--gold)]' : ''}`}
                           initial={false}
                           animate={{ rotate: shouldReduceMotion ? 0 : -2, scale: 1 }}
                           whileHover={!shouldReduceMotion ? { rotate: 0, scale: 1.06 } : undefined}
@@ -1134,21 +1320,21 @@ function StorefrontPage() {
                                 className="h-full w-full object-cover product-image-grade"
                                 loading="lazy"
                               />
-                              <span aria-hidden="true" className="absolute inset-0 bg-[#2B2420]/15" />
+                              <span aria-hidden="true" className="absolute inset-0 bg-[var(--ink)]/15" />
                             </>
                           ) : null}
                         </motion.div>
                         <span className="mt-3 flex min-h-9 flex-col items-center">
                           <span
-                            className={`text-[9px] sm:text-[10px] tracking-wider uppercase font-semibold transition-colors duration-300 ${
-                              isActive ? 'text-[#B8874B]' : 'text-[#6B7259] group-hover:text-[#2B2420]'
+                            className={`text-[13px] font-semibold tracking-[0.18em] uppercase transition-colors duration-300 ${
+                              isActive ? 'text-[var(--gold)] font-bold' : 'text-[var(--muted)] group-hover:text-[var(--ink)]'
                             }`}
                           >
                             {displayName}
                           </span>
                           <span
                             aria-hidden="true"
-                            className={`mt-2 h-0.5 w-5 bg-[#B8874B] transition-opacity duration-300 ${
+                            className={`mt-2 h-0.5 w-5 bg-[var(--gold)] transition-opacity duration-300 ${
                               isActive ? 'opacity-100' : 'opacity-0'
                             }`}
                           />
@@ -1159,80 +1345,139 @@ function StorefrontPage() {
             </div>
           </div>
         </div>
-      </motion.div>
+      </motion.section>
 
       {/* Collection Catalog */}
-      {/* Plain <div>, deliberately NOT an animated motion.div: this section is very tall
-          on mobile (stacked product cards, ~4400px), so the old whileInView amount:0.18
-          reveal could never trigger (18% of the section can't fit in the viewport) and
-          left the entire section stuck at opacity:0. The reveal animations live on the
-          section header, grid (stagger) and card wrappers below — keep this container
-          fail-safe to visible. */}
-      <div
-        className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16 md:py-24 scroll-mt-20"
+      <section
         id="collection"
+        className="site-section bg-[var(--bg)] scroll-mt-24"
       >
-        {/* Section Header */}
-        <motion.div
-          variants={containerVariants}
-          initial={shouldReduceMotion ? undefined : 'hidden'}
-          whileInView={shouldReduceMotion ? undefined : 'show'}
-          viewport={{ once: true, amount: 0.18 }}
-          className="flex flex-col md:flex-row md:items-end justify-between mb-12 sm:mb-16 border-b border-[#E4DDD1] pb-4 sm:pb-6"
-        >
-          <div>
-            <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-2 block font-inter">
-              {t('collectionSection.curatedCatalog')}
-            </motion.span>
-            <motion.h2 variants={childVariants} className="text-2xl sm:text-3xl font-fraunces font-normal text-[#2B2420]">
-              {t('collectionSection.currentCollection')}
-            </motion.h2>
-          </div>
-          
-          {/* Duplicate text pills row has been removed */}
-        </motion.div>
+        <div className="site-container">
+          <SectionHeader
+            eyebrow={t('collectionSection.curatedCatalog')}
+            title={t('collectionSection.currentCollection')}
+          />
 
-        {/* Product Grid with Staggered Viewport Entrance */}
-        {error ? (
-          <div className="bg-[#FAF7F2] border border-[#E4DDD1] rounded-none py-16 px-6 text-center max-w-3xl mx-auto">
-            <h3 className="font-fraunces text-2xl text-[#2B2420] mb-3">We're having trouble loading the collection</h3>
-            <p className="text-[#6B7259] mb-6">There was a problem fetching our pieces — please check your connection or try again.</p>
-            <div>
+          {/* Sticky-below-header Toolbar: Category Chips, Count, Sort Select */}
+          <div className="sticky top-[64px] sm:top-[84px] z-20 bg-[var(--bg)]/95 backdrop-blur-md py-3.5 border-b border-[var(--border)] mb-8 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 shadow-[0_4px_12px_rgba(43,36,32,0.03)] transition-all">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              {/* Category Chips: horizontal scroll with snap on mobile, no 3-line wrap */}
+              <div
+                role="group"
+                aria-label="Filter by category"
+                className="flex items-center gap-2 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-1 md:pb-0 [scrollbar-width:none] -mx-1 px-1"
+              >
+                {categories.map((cat) => {
+                  const isActive = selectedCategory.toLowerCase() === cat.toLowerCase() || (cat === 'All' && selectedCategory === 'All')
+                  const displayName = cat === 'All' ? t('categorySection.allPieces') : getCategoryDisplayName(cat, t)
+
+                  return (
+                    <button
+                      key={`chip-${cat}`}
+                      type="button"
+                      onClick={() => handleCategoryChange(cat)}
+                      aria-pressed={isActive}
+                      className={`snap-start shrink-0 inline-flex items-center justify-center min-h-[40px] px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--gold)] ${
+                        isActive
+                          ? 'bg-[var(--ink)] text-white border border-[var(--ink)] shadow-sm'
+                          : 'bg-white text-[var(--muted)] hover:text-[var(--ink)] hover:border-[var(--gold)] border border-[var(--border)]'
+                      }`}
+                    >
+                      {displayName}
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Controls: Result count & Sort dropdown */}
+              <div className="flex items-center justify-between md:justify-end gap-4 shrink-0">
+                <span
+                  className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] font-inter"
+                  aria-live="polite"
+                >
+                  {filteredAndSortedProducts.length} {filteredAndSortedProducts.length === 1 ? 'piece' : 'pieces'}
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <label htmlFor="catalog-sort" className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] sr-only sm:not-sr-only font-inter">
+                    Sort:
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="catalog-sort"
+                      value={selectedSort}
+                      onChange={(e) => handleSortChange(e.target.value)}
+                      className="appearance-none bg-white text-[var(--ink)] text-xs font-semibold uppercase tracking-wider pl-3 pr-8 py-2 rounded-full border border-[var(--border)] hover:border-[var(--gold)] focus:outline-none focus:ring-2 focus:ring-[var(--gold)] cursor-pointer min-h-[40px] shadow-sm transition-colors"
+                    >
+                      <option value="featured">Featured</option>
+                      <option value="price-asc">Price: Low to High</option>
+                      <option value="price-desc">Price: High to Low</option>
+                      <option value="newest">Newest</option>
+                    </select>
+                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2.5 text-[var(--muted)]">
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Product Grid / Error / Loading / Empty States */}
+          {error ? (
+            <div className="bg-white border border-[var(--border)] rounded-lg py-16 px-6 text-center max-w-xl mx-auto my-8 shadow-sm">
+              <h3 className="font-fraunces text-2xl text-[var(--ink)] mb-2">We're having trouble loading the collection</h3>
+              <p className="text-sm text-[var(--muted)] font-inter mb-6">There was a problem fetching our pieces — please check your connection or try again.</p>
               <button
+                type="button"
                 onClick={() => {
                   setError('')
                   fetchProducts()
                 }}
-                className="inline-block bg-[#B8874B] text-white px-4 py-2 text-sm font-semibold hover:bg-[#4A3728] transition-colors"
+                className="inline-flex items-center justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[var(--gold)] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[var(--ink)] transition-colors cursor-pointer"
               >
-                Try Again
+                Retry
               </button>
             </div>
-          </div>
-        ) : loading ? (
-          <motion.div
-            variants={containerVariants}
-            initial={shouldReduceMotion ? undefined : 'hidden'}
-            whileInView={shouldReduceMotion ? undefined : 'show'}
-            viewport={{ once: true, amount: 0.1 }}
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8 md:gap-10"
-          >
-            {Array.from({ length: 8 }).map((_, idx) => (
-              <SkeletonCollectionCard key={`collection-skeleton-${idx}`} animate={!shouldReduceMotion} />
-            ))}
-          </motion.div>
-        ) : filteredProducts.length === 0 ? (
-          <p className="text-[#6B7259] font-inter text-center py-12 px-4">No products available in this category yet.</p>
-        ) : (
-          <CollectionRevealGrid>
-            {filteredProducts.map((product) => (
-              <motion.div key={product.id} variants={childVariants} initial={false}>
-                <ProductCard product={product} allImages={productImages} />
-              </motion.div>
-            ))}
-          </CollectionRevealGrid>
-        )}
-      </div>
+          ) : loading ? (
+            <motion.div
+              variants={containerVariants}
+              initial={shouldReduceMotion ? undefined : 'hidden'}
+              whileInView={shouldReduceMotion ? undefined : 'show'}
+              viewport={{ once: true, amount: 0.1 }}
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-stretch"
+            >
+              {Array.from({ length: 8 }).map((_, idx) => (
+                <SkeletonCollectionCard key={`collection-skeleton-${idx}`} animate={!shouldReduceMotion} />
+              ))}
+            </motion.div>
+          ) : filteredAndSortedProducts.length === 0 ? (
+            <div className="text-center py-16 px-6 bg-white border border-[var(--border)] rounded-lg max-w-xl mx-auto my-8 shadow-sm">
+              <p className="font-fraunces text-2xl text-[var(--ink)] mb-2">No pieces match these filters</p>
+              <p className="text-sm text-[var(--muted)] font-inter mb-6">
+                Try selecting a different category or clearing your active filters.
+              </p>
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="inline-flex items-center justify-center min-h-[44px] px-6 py-2.5 rounded-full bg-[var(--ink)] text-white text-xs font-semibold uppercase tracking-wider hover:bg-[var(--gold)] transition-colors cursor-pointer"
+              >
+                Clear filters
+              </button>
+            </div>
+          ) : (
+            <CollectionRevealGrid>
+              {filteredAndSortedProducts.map((product) => (
+                <motion.div key={product.id} variants={childVariants} initial={false} className="h-full">
+                  <ProductCard product={product} allImages={productImages} />
+                </motion.div>
+              ))}
+            </CollectionRevealGrid>
+          )}
+        </div>
+      </section>
 
       {/* About Us Section (Merged Philosophy & Craftsmanship) */}
       <motion.section
@@ -1241,25 +1486,13 @@ function StorefrontPage() {
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
         viewport={{ once: true, amount: 0.18 }}
-        className="py-16 sm:py-24 bg-white border-t border-b border-[#E4DDD1] scroll-mt-20 relative"
+        className="site-section bg-white border-t border-b border-[var(--border)] relative"
       >
-        {/* Subtle gradient transition at top */}
-        <div className="absolute top-0 left-0 right-0 h-8 bg-gradient-to-b from-[#FAF7F2] to-white opacity-50 pointer-events-none" />
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: "-50px" }}
-            className="text-center mb-12 sm:mb-16"
-          >
-            <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-3 block font-inter">
-              About Us
-            </motion.span>
-            <motion.h2 variants={childVariants} className="text-2xl sm:text-3xl md:text-4xl font-fraunces font-light text-[#2B2420]">
-              Our Heritage & Process
-            </motion.h2>
-          </motion.div>
+        <div className="site-container">
+          <SectionHeader
+            eyebrow="About Us"
+            title="Our Heritage & Process"
+          />
 
           <div className="grid md:grid-cols-2 gap-10 sm:gap-12 lg:gap-16">
             {/* Philosophy Block */}
@@ -1270,15 +1503,15 @@ function StorefrontPage() {
               viewport={{ once: true, margin: "-50px" }}
               className="text-center md:text-left flex flex-col justify-start"
             >
-              <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-3 block font-inter">
+              <span className="text-[13px] font-semibold tracking-[0.18em] uppercase text-[var(--gold)] mb-3 block font-inter">
                 {t('philosophySection.eyebrow')}
-              </motion.span>
-              <motion.h3 variants={childVariants} className="text-xl sm:text-2xl md:text-3xl font-fraunces font-light text-[#2B2420] mb-4 sm:mb-6">
+              </span>
+              <h3 className="text-xl sm:text-2xl md:text-3xl font-fraunces font-light text-[var(--ink)] mb-4 sm:mb-6">
                 {t('philosophySection.title')}
-              </motion.h3>
-              <motion.p variants={childVariants} className="text-xs sm:text-sm md:text-base text-[#6B7259] font-inter leading-relaxed">
+              </h3>
+              <p className="text-sm sm:text-base text-[var(--muted)] font-inter leading-relaxed">
                 {t('philosophySection.body')}
-              </motion.p>
+              </p>
             </motion.div>
 
             {/* Craftsmanship Block */}
@@ -1289,17 +1522,20 @@ function StorefrontPage() {
               viewport={{ once: true, margin: "-50px" }}
               className="text-center md:text-left flex flex-col justify-start"
             >
-              <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-3 block font-inter">
+              <span className="text-[13px] font-semibold tracking-[0.18em] uppercase text-[var(--gold)] mb-3 block font-inter">
                 {t('craftsmanshipSection.eyebrow')}
-              </motion.span>
-              <motion.h3 variants={childVariants} className="text-xl sm:text-2xl md:text-3xl font-fraunces font-light text-[#2B2420] mb-4 sm:mb-6">
+              </span>
+              <h3 className="text-xl sm:text-2xl md:text-3xl font-fraunces font-light text-[var(--ink)] mb-4 sm:mb-6">
                 {t('craftsmanshipSection.title')}
-              </motion.h3>
-              <motion.p variants={childVariants} className="text-xs sm:text-sm md:text-base text-[#6B7259] font-inter leading-relaxed">
+              </h3>
+              <p className="text-sm sm:text-base text-[var(--muted)] font-inter leading-relaxed">
                 {t('craftsmanshipSection.body')}
-              </motion.p>
+              </p>
             </motion.div>
           </div>
+
+          {/* Customer Reviews & Stories Block */}
+          <CustomerReviews />
         </div>
       </motion.section>
 
@@ -1310,26 +1546,16 @@ function StorefrontPage() {
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
         viewport={{ once: true, amount: 0.18 }}
-        className="py-16 sm:py-24 bg-white border-b border-[#E4DDD1] scroll-mt-20"
+        className="site-section bg-[var(--bg)] border-b border-[var(--border)]"
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            whileInView="show"
-            viewport={{ once: true, margin: "-50px" }}
-            className="mb-8 sm:mb-10"
-          >
-            <motion.span variants={childVariants} className="text-[10px] sm:text-xs uppercase tracking-widest text-[#B8874B] font-semibold mb-2 block font-inter">
-              {t('visitUs.findUs')}
-            </motion.span>
-            <motion.h2 variants={childVariants} className="text-2xl sm:text-3xl font-fraunces font-normal text-[#2B2420]">
-              {t('visitUs.visitUs')}
-            </motion.h2>
-          </motion.div>
+        <div className="site-container">
+          <SectionHeader
+            eyebrow={t('visitUs.findUs')}
+            title={t('visitUs.visitUs')}
+          />
 
           <div className="grid md:grid-cols-[minmax(0,1fr)_18rem] gap-6 sm:gap-8 items-start">
-            <div className="overflow-hidden rounded-lg border border-[#E4DDD1] bg-[#FAF7F2] shadow-sm">
+            <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-white shadow-sm">
               <iframe
                 title="Atelier furniture shop location"
                 src="https://maps.google.com/maps?q=Sri+Vishnu+Grand+PG,+Hostel+%26+Guest+House,+Gachibowli,+Hyderabad&z=16&output=embed"
@@ -1341,19 +1567,29 @@ function StorefrontPage() {
               />
             </div>
 
-            <div className="border border-[#E4DDD1] bg-[#FAF7F2] p-6 sm:p-7 font-inter">
-              <p className="text-[10px] uppercase tracking-widest font-semibold text-[#B8874B] mb-3">{t('visitUs.showroom')}</p>
-              <p className="text-sm leading-6 text-[#2B2420] mb-6">{t('visitUs.shopLocation')}</p>
-              <div className="border-t border-[#E4DDD1] pt-5">
-                <p className="text-[10px] uppercase tracking-widest font-semibold text-[#B8874B] mb-2">{t('visitUs.hours')}</p>
-                <p className="text-sm leading-6 text-[#6B7259]">{t('visitUs.hoursMonSat')}</p>
-                <p className="text-sm leading-6 text-[#6B7259]">{t('visitUs.hoursSunday')}</p>
+            <div className="border border-[var(--border)] bg-white p-6 sm:p-7 font-inter rounded-lg shadow-sm">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[var(--gold)] mb-3">{t('visitUs.showroom')}</p>
+              <p className="text-sm leading-6 text-[var(--ink)] mb-6">{t('visitUs.shopLocation')}</p>
+              <div className="border-t border-[var(--border)] pt-5">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[var(--gold)] mb-2">{t('visitUs.hours')}</p>
+                <p className="text-sm leading-6 text-[var(--muted)]">{t('visitUs.hoursMonSat')}</p>
+                <p className="text-sm leading-6 text-[var(--muted)]">{t('visitUs.hoursSunday')}</p>
               </div>
-              <p className="mt-6 pt-5 border-t border-[#E4DDD1] text-sm font-semibold text-[#4A3728] break-all">{CONTACT_PHONE}</p>
+              <a
+                href={SHOP_INFO.telPhone}
+                className="mt-6 pt-5 border-t border-[var(--border)] text-[13px] font-semibold text-[var(--ink)] hover:text-[var(--gold)] min-h-[44px] inline-flex items-center gap-2 transition-colors"
+                aria-label={`Call showroom at ${SHOP_INFO.phone}`}
+              >
+                <svg className="w-4 h-4 text-[var(--gold)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.122-4.1-6.924-6.924l1.293-.97a1.173 1.173 0 00.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                </svg>
+                <span>{SHOP_INFO.phone}</span>
+              </a>
             </div>
           </div>
         </div>
       </motion.section>
+      </main>
 
       {/* Footer */}
       <motion.footer
@@ -1361,59 +1597,160 @@ function StorefrontPage() {
         initial={shouldReduceMotion ? undefined : 'hidden'}
         whileInView={shouldReduceMotion ? undefined : 'show'}
         viewport={{ once: true, amount: 0.18 }}
-        className="bg-[#FAF7F2] border-t border-[#E4DDD1] py-12 sm:py-16 px-4 sm:px-8 text-center font-inter text-[10px] sm:text-xs text-[#6B7259]"
+        className="bg-white border-t border-[var(--border)] pt-14 pb-12 font-inter text-[13px] text-[var(--muted)]"
       >
-        <div className="max-w-7xl mx-auto flex flex-col items-center gap-4 sm:gap-6">
-          <div className="flex flex-col items-center">
-            <span className="font-fraunces text-xl sm:text-2xl font-semibold tracking-wider text-[#2B2420]">ATELIER</span>
-            <span className="text-[9px] tracking-widest text-[#B8874B] uppercase mt-1">Fine Furniture</span>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 md:gap-8 text-[#4A3728] font-semibold mt-2">
-            <div className="flex items-center gap-1.5">
-              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#B8874B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.122-4.1-6.924-6.924l1.293-.97a1.173 1.173 0 00.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
-              </svg>
-              <span className="break-all">{CONTACT_PHONE}</span>
+        <div className="site-container">
+          {/* Main 4-column layout on desktop, stacked on mobile */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-12 pb-12 border-b border-[var(--border)]">
+            {/* Column 1: Brand */}
+            <div className="flex flex-col items-start text-left">
+              <span className="font-fraunces text-2xl font-semibold tracking-wider text-[var(--ink)]">ATELIER</span>
+              <span className="text-[11px] font-semibold tracking-[0.2em] text-[var(--gold)] uppercase mt-1">Fine Furniture</span>
+              <p className="mt-3 text-[13px] text-[var(--muted)] leading-relaxed">
+                Handcrafted furniture designed with restraint and built to endure using sustainable timber and traditional joinery.
+              </p>
+              {SHOP_INFO.gstin ? (
+                <p className="mt-3 text-[13px] text-[var(--muted)] font-mono">
+                  GSTIN: {SHOP_INFO.gstin}
+                </p>
+              ) : null}
             </div>
-            <div className="flex items-center gap-1.5">
-              <svg className="w-4 h-4 text-[#B8874B]" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-              </svg>
-              <span>{SHOP_LOCATION_TEXT}</span>
-            </div>
-          </div>
-          
-          <div className="w-16 h-px bg-[#E4DDD1] my-2" />
 
-          <p className="max-w-md text-[10px] leading-relaxed text-[#6B7259]/75">
-            We only use your contact details to reach you about your order or respond to enquiries.
-          </p>
-          
-          <p className="text-[10px] tracking-wider text-[#6B7259]/80 uppercase">
-            © {new Date().getFullYear()} ATELIER. All rights reserved.
-          </p>
+            {/* Column 2: Quick Links */}
+            <div className="flex flex-col items-start text-left">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[var(--gold)] mb-3">
+                {t('footer.quickLinks')}
+              </p>
+              <nav className="flex flex-col space-y-1">
+                <a
+                  href="#collection"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    document.getElementById('collection')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+                  }}
+                  className="min-h-[44px] inline-flex items-center text-[13px] text-[var(--muted)] hover:text-[var(--gold)] transition-colors"
+                >
+                  {t('footer.shop')}
+                </a>
+                <a
+                  href="#about-us"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    document.getElementById('about-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+                  }}
+                  className="min-h-[44px] inline-flex items-center text-[13px] text-[var(--muted)] hover:text-[var(--gold)] transition-colors"
+                >
+                  {t('footer.about')}
+                </a>
+                <a
+                  href="#visit-us"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    document.getElementById('visit-us')?.scrollIntoView({ behavior: shouldReduceMotion ? 'auto' : 'smooth' })
+                  }}
+                  className="min-h-[44px] inline-flex items-center text-[13px] text-[var(--muted)] hover:text-[var(--gold)] transition-colors"
+                >
+                  {t('footer.contact')}
+                </a>
+              </nav>
+            </div>
+
+            {/* Column 3: Visit Showroom */}
+            <div className="flex flex-col items-start text-left">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[var(--gold)] mb-3">
+                {t('footer.visit')}
+              </p>
+              <p className="text-[13px] text-[var(--ink)] leading-relaxed mb-2">
+                {SHOP_INFO.address}
+              </p>
+              <p className="text-[13px] text-[var(--muted)] mb-3">
+                {SHOP_INFO.hoursMonSat}
+              </p>
+              <a
+                href={SHOP_INFO.telPhone}
+                className="min-h-[44px] inline-flex items-center gap-2 text-[13px] font-semibold text-[var(--ink)] hover:text-[var(--gold)] transition-colors"
+                aria-label={`Call showroom at ${SHOP_INFO.phone}`}
+              >
+                <svg className="w-4 h-4 text-[var(--gold)] shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.802-5.122-4.1-6.924-6.924l1.293-.97a1.173 1.173 0 00.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H4.5A2.25 2.25 0 002.25 4.5v2.25z" />
+                </svg>
+                <span>{SHOP_INFO.phone}</span>
+              </a>
+            </div>
+
+            {/* Column 4: Follow / Direct Support */}
+            <div className="flex flex-col items-start text-left">
+              <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[var(--gold)] mb-3">
+                {SHOP_INFO.social.instagram || SHOP_INFO.social.youtube ? t('footer.follow') : 'Showroom Care'}
+              </p>
+              {SHOP_INFO.social.instagram || SHOP_INFO.social.youtube ? (
+                <div className="flex flex-col space-y-1">
+                  {SHOP_INFO.social.instagram ? (
+                    <a
+                      href={SHOP_INFO.social.instagram}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[44px] inline-flex items-center text-[13px] text-[var(--muted)] hover:text-[var(--gold)] transition-colors"
+                    >
+                      Instagram ↗
+                    </a>
+                  ) : null}
+                  {SHOP_INFO.social.youtube ? (
+                    <a
+                      href={SHOP_INFO.social.youtube}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="min-h-[44px] inline-flex items-center text-[13px] text-[var(--muted)] hover:text-[var(--gold)] transition-colors"
+                    >
+                      YouTube ↗
+                    </a>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-[13px] text-[var(--muted)] leading-relaxed">
+                  Have questions about bespoke dimensions, joinery, or showroom visits? Connect directly with our team.
+                </p>
+              )}
+              <a
+                href={`https://wa.me/${SHOP_INFO.whatsappNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 min-h-[44px] inline-flex items-center text-[13px] font-semibold text-[var(--gold)] hover:underline"
+              >
+                WhatsApp Enquiries ↗
+              </a>
+            </div>
+          </div>
+
+          {/* Policy Links Row */}
+          <div className="py-6 flex flex-wrap justify-center items-center gap-x-6 gap-y-2 text-[13px] text-[var(--muted)] border-b border-[var(--border)]">
+            <Link to="/privacy" className="min-h-[44px] inline-flex items-center hover:text-[var(--gold)] transition-colors">
+              {t('footer.privacy')}
+            </Link>
+            <span aria-hidden="true" className="text-[var(--border)] hidden sm:inline">·</span>
+            <Link to="/delivery-policy" className="min-h-[44px] inline-flex items-center hover:text-[var(--gold)] transition-colors">
+              {t('footer.delivery')}
+            </Link>
+            <span aria-hidden="true" className="text-[var(--border)] hidden sm:inline">·</span>
+            <Link to="/returns-warranty" className="min-h-[44px] inline-flex items-center hover:text-[var(--gold)] transition-colors">
+              {t('footer.returnsWarranty')}
+            </Link>
+          </div>
+
+          {/* Bottom notices and copyright */}
+          <div className="pt-6 flex flex-col sm:flex-row justify-between items-center gap-4 text-[13px] text-[var(--muted)] text-center sm:text-left">
+            <p className="max-w-md leading-relaxed">
+              {t('footer.privacyNotice')}
+            </p>
+            <p className="uppercase tracking-wider">
+              © {new Date().getFullYear()} ATELIER. {t('footer.allRightsReserved')}
+            </p>
+          </div>
         </div>
       </motion.footer>
       
-      <ChatWidget />
-
-      {/* Floating WhatsApp Button */}
-      <motion.a
-        href={`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}`}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Chat with us on WhatsApp"
-        title="Chat on WhatsApp"
-        whileHover={!shouldReduceMotion ? { scale: 1.05 } : undefined}
-        whileTap={!shouldReduceMotion ? { scale: 0.95 } : undefined}
-        className="fixed bottom-4 right-4 md:bottom-8 md:right-8 z-40 w-14 h-14 bg-[#25D366] hover:bg-[#20ba59] text-white rounded-full shadow-lg flex items-center justify-center transition-colors duration-300 border border-white/20"
-      >
-        <svg className="w-7 h-7 fill-current text-white" viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.816 9.816 0 0 0 12.04 2m.01 1.67c2.2 0 4.26.86 5.82 2.42a8.225 8.225 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.196 8.196 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24m-3.53 3.42c-.19 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.87 1.21 3.07c.15.2 2.06 3.28 5.08 4.49.72.29 1.28.46 1.72.6.72.23 1.38.2 1.9.12.58-.08 1.79-.73 2.04-1.44.26-.71.26-1.32.18-1.44-.08-.13-.27-.2-.56-.35-.3-.15-1.78-.88-2.06-.98-.28-.1-.48-.15-.69.15-.2.3-.79.98-.97 1.18-.18.2-.36.22-.65.07-.3-.15-1.25-.46-2.38-1.47-.88-.78-1.47-1.75-1.64-2.05-.18-.3-.02-.46.13-.61.13-.13.3-.35.45-.52.15-.18.2-.3.3-.5.1-.2.05-.38-.02-.53-.08-.15-.69-1.66-.94-2.28-.25-.59-.51-.51-.69-.52l-.59-.01z" />
-        </svg>
-      </motion.a>
+      {/* Unified Floating Action Button (Desktop >= 640px) & Fixed Bottom Action Bar (Mobile < 640px) */}
+      <FloatingContactControl />
     </div>
   )
 }

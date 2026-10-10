@@ -8,6 +8,7 @@ import PartnerLoginPage from './pages/PartnerLoginPage'
 import PartnerDashboardPage from './pages/PartnerDashboardPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import PartnerProtectedRoute from './components/PartnerProtectedRoute'
+import PolicyPage from './pages/PolicyPage'
 import { ToastProvider } from './context/ToastContext'
 
 function App() {
@@ -17,6 +18,9 @@ function App() {
         <Route path="/" element={<StorefrontPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/track/:tracking_token" element={<OrderTrackingPage />} />
+        <Route path="/privacy" element={<PolicyPage type="privacy" />} />
+        <Route path="/delivery-policy" element={<PolicyPage type="delivery" />} />
+        <Route path="/returns-warranty" element={<PolicyPage type="returns-warranty" />} />
         <Route path="/login" element={<LoginPage />} />
         <Route
           path="/admin"

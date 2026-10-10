@@ -2,30 +2,107 @@
 
 @import "tailwindcss";
 
+:root {
+  --bg: #FAF7F2;
+  --ink: #2A2118;
+  --muted: #6B6B60;
+  --gold: #8A5F25;
+  --gold-fill: #B8874B;
+  --gold-on-dark: #F3DDB5;
+  --border: #E7E0D4;
+  --gold-decorative: #B8874B;
+  --track: #EFE9DD;
+  --verified-fg: #2F6B3F;
+  --verified-bg: #E8F2EA;
+}
+
 @theme {
+  --color-bg: var(--bg);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-gold: var(--gold);
+  --color-gold-on-dark: var(--gold-on-dark);
+  --color-border: var(--border);
+  --color-gold-decorative: var(--gold-decorative);
+
   --color-ivory: #FAF7F2;
-  --color-charcoal: #2B2420;
-  --color-brass: #B8874B;
-  --color-sage: #6B7259;
-  --color-taupe: #E4DDD1;
-  --color-walnut: #4A3728;
+  --color-charcoal: #2A2118;
+  --color-brass: #8A5F25;
+  --color-sage: #6B6B60;
+  --color-taupe: #E7E0D4;
+  --color-walnut: #2A2118;
 
   --font-fraunces: "Fraunces", serif;
   --font-inter: "Inter", sans-serif;
 }
 
 html, body {
-  background-color: var(--color-ivory);
-  color: var(--color-charcoal);
+  background-color: var(--bg);
+  color: var(--ink);
   font-family: var(--font-inter);
   scroll-behavior: smooth;
   margin: 0;
   padding: 0;
 }
 
+/* Shared responsive container with clamped inline padding (16px to 40px) and 1280px max-width */
+.site-container {
+  width: 100%;
+  max-width: 1280px;
+  margin-inline: auto;
+  padding-inline: clamp(16px, 4vw, 40px);
+}
+
+/* Shared section spacing with clamped block padding (64px to 96px) and scroll margin */
+.site-section {
+  padding-block: clamp(64px, 8vw, 96px);
+  scroll-margin-top: 96px;
+}
+
+section[id],
+div[id].scroll-section,
+div[id="collection"] {
+  scroll-margin-top: 96px;
+}
+
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: rgba(250, 247, 242, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+  height: 84px;
+  transition: height 0.22s ease, background-color 0.22s ease, border-color 0.22s ease;
+}
+
+.site-header.is-scrolled {
+  height: 64px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-header {
+    transition: none !important;
+  }
+}
+
 ::selection {
-  background-color: var(--color-brass);
-  color: var(--color-ivory);
+  background-color: var(--gold-decorative);
+  color: var(--bg);
+}
+
+.hero-section {
+  position: relative;
+}
+
+.hero-section::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(24, 15, 8, 0.55) 0%, rgba(24, 15, 8, 0.40) 45%, rgba(24, 15, 8, 0.65) 100%);
+  z-index: 2;
+  pointer-events: none;
 }
 
 .skeleton-shimmer {
@@ -58,7 +135,7 @@ html, body {
 }
 
 :focus-visible {
-  outline: 3px solid rgba(184, 135, 75, 0.9);
+  outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
 
@@ -70,7 +147,7 @@ select:focus-visible,
 [role="button"]:focus-visible,
 [role="link"]:focus-visible,
 [tabindex="0"]:focus-visible {
-  outline: 3px solid rgba(184, 135, 75, 0.9);
+  outline: 2px solid var(--gold);
   outline-offset: 2px;
 }
 

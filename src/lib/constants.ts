@@ -6,6 +6,24 @@
 export const STALE_ENQUIRY_HOURS = 48
 
 /**
+ * Showroom business configuration
+ */
+export const SHOP_INFO = {
+  phone: "+91 90149 96929",
+  telPhone: "tel:+919014996929",
+  whatsappNumber: "919014996929",
+  address: "Sri Vishnu Grand PG, Hostel & Guest House, Gachibowli, Hyderabad, Telangana",
+  directionsUrl: "https://maps.google.com/?q=Sri+Vishnu+Grand+PG,+Hostel+%26+Guest+House,+Gachibowli,+Hyderabad,+Telangana",
+  hoursMonSat: "Mon–Sat: 10:00 AM – 8:00 PM",
+  hoursSunday: "Sunday: Closed",
+  gstin: "", // Placeholder: Configure GSTIN when available (rendered in footer only when present)
+  social: {
+    instagram: "", // Placeholder: Configure Instagram URL when available
+    youtube: "",   // Placeholder: Configure YouTube URL when available
+  },
+}
+
+/**
  * Helper to determine if a customer delivery enquiry is stale/overdue.
  * An enquiry is stale if its status is 'new' (or default undefined/empty)
  * and it was created more than STALE_ENQUIRY_HOURS ago.

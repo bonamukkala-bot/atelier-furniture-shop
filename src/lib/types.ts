@@ -90,6 +90,7 @@ export interface Product {
   compare_at_price?: number | null
   stock_qty: number
   sold: boolean
+  featured?: boolean
   is_archived: boolean
   image_url: string | null
   created_at: string
