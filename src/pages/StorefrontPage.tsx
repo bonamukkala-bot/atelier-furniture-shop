@@ -8,6 +8,7 @@ import { SHOP_INFO } from '../lib/constants'
 import FloatingContactControl from '../components/FloatingContactControl'
 import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
+import CustomerAccountControl from '../components/CustomerAccountControl'
 import CustomerReviews from '../components/CustomerReviews'
 import {
   motion,
@@ -997,11 +998,13 @@ function StorefrontPage() {
               />
             </a>
           </nav>
+          <CustomerAccountControl />
           <LanguageToggle />
         </div>
 
         {/* Mobile controls */}
         <div className="flex items-center gap-2 md:hidden">
+          <CustomerAccountControl />
           <LanguageToggle />
           <button
             type="button"

@@ -9,6 +9,7 @@ import { CONTACT_PHONE } from './StorefrontPage'
 import { buildWhatsAppLink, trackEnquiryClick } from '../lib/whatsapp'
 import ProductQuickActions from '../components/ProductQuickActions'
 import LanguageToggle from '../components/LanguageToggle'
+import CustomerAccountControl from '../components/CustomerAccountControl'
 import DeliveryChecker from '../components/DeliveryChecker'
 
 function formatPrice(price: number): string {
@@ -206,6 +207,7 @@ function ProductDetailPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex items-center justify-between gap-4">
           <Link to="/" className="font-fraunces text-xl sm:text-2xl font-semibold tracking-tight">ATELIER</Link>
           <div className="flex items-center gap-3">
+            <CustomerAccountControl />
             <LanguageToggle />
             <Link to="/#collection" className="text-[10px] sm:text-xs font-inter font-semibold uppercase tracking-widest text-[#6B7259] hover:text-[#B8874B]">
               {t('productDetail.backToCollection')}

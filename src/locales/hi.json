@@ -76,5 +76,15 @@
     "returnsWarranty": "वापसी और वारंटी",
     "allRightsReserved": "सर्वाधिकार सुरक्षित।",
     "privacyNotice": "हम आपकी संपर्क जानकारी का उपयोग केवल आपके ऑर्डर या पूछताछ के उत्तर के लिए करते हैं।"
+  },
+  "account": {
+    "signIn": "साइन इन",
+    "signInWithGoogle": "गूगल से साइन इन करें",
+    "signOut": "साइन आउट",
+    "connecting": "कनेक्ट हो रहा है...",
+    "signInFailed": "साइन इन करने में असमर्थ। कृपया पुनः प्रयास करें।",
+    "customer": "ग्राहक",
+    "openAccountMenu": "खाता मेनू खोलें",
+    "closeAccountMenu": "खाता मेनू बंद करें"
   }
 }

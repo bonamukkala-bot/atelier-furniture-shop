@@ -126,5 +126,15 @@
     "closeLightbox": "Close photo viewer",
     "prevPhoto": "Previous photo",
     "nextPhoto": "Next photo"
+  },
+  "account": {
+    "signIn": "సైన్ ఇన్",
+    "signInWithGoogle": "గూగుల్‌తో సైన్ ఇన్ చేయండి",
+    "signOut": "సైన్ అవుట్",
+    "connecting": "కనెక్ట్ అవుతోంది...",
+    "signInFailed": "సైన్ ఇన్ చేయడం సాధ్యపడలేదు. దయచేసి మళ్లీ ప్రయత్నించండి.",
+    "customer": "కస్టమర్",
+    "openAccountMenu": "ఖాతా మెనూ తెరవండి",
+    "closeAccountMenu": "ఖాతా మెనూ మూసివేయండి"
   }
 }

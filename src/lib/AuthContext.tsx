@@ -1,18 +1,24 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import type { Session, User, AuthError } from '@supabase/supabase-js'
 import { supabase } from './supabaseClient'
 
 interface AuthContextType {
   session: Session | null
+  user: User | null
   isAdmin: boolean
   loading: boolean
+  signInWithGoogle: () => Promise<{ error: AuthError | null }>
+  signOut: () => Promise<{ error: AuthError | null }>
 }
 
 const AuthContext = createContext<AuthContextType>({
   session: null,
+  user: null,
   isAdmin: false,
   loading: true,
+  signInWithGoogle: async () => ({ error: null }),
+  signOut: async () => ({ error: null }),
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -79,11 +85,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [userId, sessionLoaded])
 
+  // OAuth helper: signs in with Google returning error instead of throwing
+  const signInWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+      },
+    })
+    return { error }
+  }
+
+  // Sign out helper: stays on current page
+  const signOut = async () => {
+    const { error } = await supabase.auth.signOut()
+    return { error }
+  }
+
   // loading stays true until both initial session check and admin check for current user are finished
   const loading = !sessionLoaded || checkedUserId !== userId
 
   return (
-    <AuthContext.Provider value={{ session, isAdmin, loading }}>
+    <AuthContext.Provider
+      value={{
+        session,
+        user: session?.user ?? null,
+        isAdmin,
+        loading,
+        signInWithGoogle,
+        signOut,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   )

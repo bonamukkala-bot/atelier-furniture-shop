@@ -126,5 +126,15 @@
     "closeLightbox": "Close photo viewer",
     "prevPhoto": "Previous photo",
     "nextPhoto": "Next photo"
+  },
+  "account": {
+    "signIn": "Sign In",
+    "signInWithGoogle": "Sign in with Google",
+    "signOut": "Sign Out",
+    "connecting": "Connecting...",
+    "signInFailed": "Unable to sign in. Please try again.",
+    "customer": "Customer",
+    "openAccountMenu": "Open account menu",
+    "closeAccountMenu": "Close account menu"
   }
 }
