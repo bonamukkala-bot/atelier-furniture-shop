@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { useAuth } from '../lib/AuthContext'
 import { CONTACT_PHONE } from '../pages/StorefrontPage'
 import { useToast } from '../context/ToastContext'
-import type { Product, DeliveryZone } from '../lib/types'
+import SavedAddressPicker from './SavedAddressPicker'
+import type { Product, DeliveryZone, CustomerAddress } from '../lib/types'
 import {
   searchNominatim,
   reverseGeocodeNominatim,
@@ -30,6 +32,7 @@ function formatPrice(price: number): string {
 }
 
 export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
+  const { user } = useAuth()
   const { showToast } = useToast()
 
   // ── Shop settings & zones ──
@@ -55,8 +58,22 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
   const [pincodeInput, setPincodeInput] = useState('')
   const [checkResult, setCheckResult] = useState<CheckResult | null>(null)
 
-  // Dropdown click outside ref
+  // Dropdown click outside ref & skip search flag
   const dropdownRef = useRef<HTMLDivElement | null>(null)
+  const skipNextSearchRef = useRef(false)
+
+  // Helper to drop saved address and reset coordinates
+  const dropSavedAddress = (keepSearchText: boolean) => {
+    setSelectedAddressId(null)
+    setLatitude(null)
+    setLongitude(null)
+    setResolvedAddress('')
+    setSelectedPlace(null)
+    setCheckResult(null)
+    if (!keepSearchText) {
+      setSearchQuery('')
+    }
+  }
 
   // ── Enquiry form state ──
   const [customerName, setCustomerName] = useState('')
@@ -66,6 +83,22 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
   const [formError, setFormError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitSuccess, setSubmitSuccess] = useState(false)
+
+  // ── Customer saved address state ──
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null)
+  const [saveAddress, setSaveAddress] = useState(true)
+  const [addressLabel, setAddressLabel] = useState<'Home' | 'Work' | 'Other'>('Home')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // Prefill customer name if signed in and empty
+  useEffect(() => {
+    if (user && !customerName) {
+      const metaName = (user.user_metadata?.full_name || user.user_metadata?.name || '') as string
+      if (metaName) {
+        setCustomerName(metaName)
+      }
+    }
+  }, [user])
 
   // ── Initial load: shop_settings & delivery_zones ──
   useEffect(() => {
@@ -114,6 +147,11 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
 
   // ── Debounced Nominatim address search ──
   useEffect(() => {
+    if (skipNextSearchRef.current) {
+      skipNextSearchRef.current = false
+      return
+    }
+
     const trimmed = searchQuery.trim()
 
     // Don't search if too short or if matching the already selected suggestion
@@ -260,8 +298,48 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
     }
   }
 
+  // ── Handle saved address selection ──
+  const handleSelectSavedAddress = (addr: CustomerAddress | null) => {
+    if (!addr) {
+      setSelectedAddressId(null)
+      setDoorFlatBuilding('')
+      setStreetLocality('')
+      setLatitude(null)
+      setLongitude(null)
+      setResolvedAddress('')
+      setSearchQuery('')
+      setPincodeInput('')
+      setSelectedPlace(null)
+      setCheckResult(null)
+      return
+    }
+
+    setSelectedAddressId(addr.id)
+    if (addr.recipient_name) setCustomerName(addr.recipient_name)
+    if (addr.phone) setCustomerPhone(addr.phone)
+    setDoorFlatBuilding(addr.house_no || '')
+    const locality = addr.street_area + (addr.landmark ? `, Near ${addr.landmark}` : '')
+    setStreetLocality(locality)
+    const lat = addr.latitude ?? null
+    const lng = addr.longitude ?? null
+    setLatitude(lat)
+    setLongitude(lng)
+    setPincodeInput(addr.pincode || '')
+    const resolved = [addr.street_area, addr.city, addr.pincode].filter(Boolean).join(', ')
+    setResolvedAddress(resolved)
+    setShowDropdown(false)
+    setIsSearching(false)
+    if (searchQuery !== resolved || selectedPlace !== null) {
+      skipNextSearchRef.current = true
+    }
+    setSearchQuery(resolved)
+    setSelectedPlace(null)
+    setCheckResult(evaluateDelivery(lat, lng, addr.pincode || addr.street_area))
+  }
+
   // ── Handle suggestion selection from dropdown ──
   const handleSelectSuggestion = (place: NominatimPlace) => {
+    if (selectedAddressId) setSelectedAddressId(null)
     setSelectedPlace(place)
     setSearchQuery(place.displayName)
     setResolvedAddress(place.displayName)
@@ -280,6 +358,7 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
 
   // ── Handle "Use My Current Location" (Browser Geolocation + Nominatim Reverse) ──
   const handleGetCurrentLocation = () => {
+    if (selectedAddressId) dropSavedAddress(false)
     if (typeof window === 'undefined' || !navigator.geolocation) {
       const msg = 'Geolocation is not supported by your browser.'
       setLocationError(msg)
@@ -418,8 +497,10 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
     setSubmitting(true)
 
     try {
+      const validatedPincode = /^\d{6}$/.test(pincodeInput.trim()) ? pincodeInput.trim() : null
+
       // Insert enquiry record with coordinates & calculated distance
-      const { error: insertError } = await supabase.from('delivery_enquiries').insert({
+      const enquiryPayload = {
         product_id: product.id,
         customer_name: trimmedName,
         phone: cleanedPhone,
@@ -431,7 +512,21 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
         latitude: latitude ?? null,
         longitude: longitude ?? null,
         distance_km: activeResult.distanceKm ?? null,
-      })
+        user_id: user ? user.id : null,
+        pincode: validatedPincode,
+        landmark: null,
+      }
+
+      let { error: insertError } = await supabase.from('delivery_enquiries').insert(enquiryPayload)
+
+      if (insertError && insertError.code === '42501' && enquiryPayload.user_id) {
+        console.warn('Enquiry insert RLS error with user_id, retrying with user_id = null:', insertError)
+        const retryResult = await supabase.from('delivery_enquiries').insert({
+          ...enquiryPayload,
+          user_id: null,
+        })
+        insertError = retryResult.error
+      }
 
       if (insertError) {
         console.error('Delivery enquiry insert error:', insertError)
@@ -462,11 +557,64 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
         'noopener,noreferrer'
       )
 
+      // Non-blocking address save for signed-in user
+      if (user && saveAddress && !selectedAddressId && validatedPincode) {
+        try {
+          const { data: existingAddrs, error: fetchErr } = await supabase
+            .from('customer_addresses')
+            .select('house_no, street_area, pincode')
+            .eq('user_id', user.id)
+
+          if (fetchErr) {
+            console.warn('Failed to check existing addresses:', fetchErr)
+            showToast("Enquiry sent, but we couldn't save the address", 'error')
+          } else {
+            const list = existingAddrs || []
+            const isDuplicate = list.some(
+              (a) =>
+                a.house_no?.trim().toLowerCase() === trimmedDoor.toLowerCase() &&
+                a.street_area?.trim().toLowerCase() === trimmedStreet.toLowerCase() &&
+                a.pincode?.trim() === validatedPincode
+            )
+
+            if (!isDuplicate && list.length < 10) {
+              const isDefault = list.length === 0
+              const { error: saveAddrErr } = await supabase.from('customer_addresses').insert({
+                user_id: user.id,
+                label: addressLabel,
+                recipient_name: trimmedName,
+                phone: cleanedPhone,
+                house_no: trimmedDoor,
+                street_area: trimmedStreet,
+                landmark: null,
+                city: 'Hyderabad',
+                state: 'Telangana',
+                pincode: validatedPincode,
+                latitude: latitude ?? null,
+                longitude: longitude ?? null,
+                is_default: isDefault,
+              })
+
+              if (saveAddrErr) {
+                console.warn('Failed to save customer address:', saveAddrErr)
+                showToast("Enquiry sent, but we couldn't save the address", 'error')
+              } else {
+                setRefreshKey((k) => k + 1)
+              }
+            }
+          }
+        } catch (saveErr) {
+          console.warn('Error in non-blocking address save:', saveErr)
+          showToast("Enquiry sent, but we couldn't save the address", 'error')
+        }
+      }
+
       // Reset form
       setCustomerName('')
       setCustomerPhone('')
       setDoorFlatBuilding('')
       setStreetLocality('')
+      setSelectedAddressId(null)
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Failed to submit enquiry. Please try again.')
       showToast('Failed to submit enquiry. Please try again.', 'error')
@@ -575,8 +723,12 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value)
-                    if (selectedPlace && e.target.value !== selectedPlace.displayName) {
+                    const val = e.target.value
+                    setSearchQuery(val)
+                    skipNextSearchRef.current = false
+                    if (selectedAddressId) {
+                      dropSavedAddress(true)
+                    } else if (selectedPlace && val !== selectedPlace.displayName) {
                       setSelectedPlace(null)
                       setLatitude(null)
                       setLongitude(null)
@@ -642,6 +794,7 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
                   onChange={(e) => {
                     const cleaned = e.target.value.replace(/\D/g, '').slice(0, 6)
                     setPincodeInput(cleaned)
+                    if (selectedAddressId) dropSavedAddress(false)
                     if (checkResult) setCheckResult(null)
                   }}
                   placeholder="e.g. 500033"
@@ -812,6 +965,15 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
           </div>
         )}
 
+        {user && (
+          <SavedAddressPicker
+            userId={user.id}
+            selectedId={selectedAddressId}
+            refreshKey={refreshKey}
+            onSelect={handleSelectSavedAddress}
+          />
+        )}
+
         <form onSubmit={handleEnquirySubmit} className="space-y-4">
           <div>
             <label className="block font-inter text-[11px] font-semibold uppercase tracking-wider text-[#6B7259] mb-1">
@@ -883,7 +1045,10 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
               type="text"
               required
               value={doorFlatBuilding}
-              onChange={(e) => setDoorFlatBuilding(e.target.value)}
+              onChange={(e) => {
+                setDoorFlatBuilding(e.target.value)
+                if (selectedAddressId) setSelectedAddressId(null)
+              }}
               placeholder="e.g. Flat 402, Oakwood Residency"
               className="w-full bg-[#FAF7F2]/50 border border-[#E4DDD1] px-3.5 py-2.5 text-sm text-[#2B2420] placeholder-[#6B7259]/50 focus:outline-none focus:border-[#B8874B] transition-colors"
             />
@@ -897,11 +1062,54 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
               type="text"
               required
               value={streetLocality}
-              onChange={(e) => setStreetLocality(e.target.value)}
+              onChange={(e) => {
+                setStreetLocality(e.target.value)
+                if (selectedAddressId) dropSavedAddress(false)
+              }}
               placeholder="e.g. Near Durgam Cheruvu Metro Station, Road 36"
               className="w-full bg-[#FAF7F2]/50 border border-[#E4DDD1] px-3.5 py-2.5 text-sm text-[#2B2420] placeholder-[#6B7259]/50 focus:outline-none focus:border-[#B8874B] transition-colors"
             />
           </div>
+
+          {/* Save Address Option for signed-in users */}
+          {user && !selectedAddressId && (
+            /^\d{6}$/.test(pincodeInput.trim()) ? (
+              <div className="pt-1 pb-1">
+                <label className="flex items-center gap-2 cursor-pointer font-inter text-xs text-[#2B2420]">
+                  <input
+                    type="checkbox"
+                    checked={saveAddress}
+                    onChange={(e) => setSaveAddress(e.target.checked)}
+                    className="rounded text-[#B8874B] focus:ring-[#B8874B] border-[#E4DDD1]"
+                  />
+                  <span>Save this address to my account</span>
+                </label>
+
+                {saveAddress && (
+                  <div className="mt-2 pl-6 flex items-center gap-3">
+                    <span className="text-[11px] font-inter text-[#6B7259] font-medium">Save as:</span>
+                    {(['Home', 'Work', 'Other'] as const).map((lbl) => (
+                      <label key={lbl} className="inline-flex items-center gap-1.5 cursor-pointer text-xs font-inter text-[#2B2420]">
+                        <input
+                          type="radio"
+                          name="addressLabel"
+                          value={lbl}
+                          checked={addressLabel === lbl}
+                          onChange={() => setAddressLabel(lbl)}
+                          className="text-[#B8874B] focus:ring-[#B8874B] border-[#E4DDD1]"
+                        />
+                        {lbl}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="pt-1 pb-1 text-[11px] font-inter text-[#6B7259]">
+                <span>Add your 6-digit pincode above to save this address</span>
+              </div>
+            )
+          )}
 
           <div className="pt-2">
             <button

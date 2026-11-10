@@ -10,6 +10,7 @@ export interface Customer {
 export interface Order {
   id: string
   customer_id: string
+  customer_user_id?: string | null
   product_id: string
   quantity: number
   order_date: string | null
@@ -165,14 +166,36 @@ export interface DeliveryZone {
   created_at?: string
 }
 
+export interface CustomerAddress {
+  id: string
+  user_id: string
+  label: 'Home' | 'Work' | 'Other' | string
+  recipient_name: string
+  phone: string
+  house_no: string
+  street_area: string
+  landmark?: string | null
+  city: string
+  state: string
+  pincode: string
+  latitude?: number | null
+  longitude?: number | null
+  is_default?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export interface DeliveryEnquiry {
   id: string
+  user_id?: string | null
   product_id: string
   customer_name: string
   phone: string
   area_text: string
   door_flat_building?: string | null
   street_locality?: string | null
+  landmark?: string | null
+  pincode?: string | null
   zone_id: string | null
   is_deliverable: boolean
   latitude?: number | null
