@@ -33,7 +33,14 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
   const [matchedEnquiry, setMatchedEnquiry] = useState<DeliveryEnquiry | null>(null)
   const [dismissedEnquiryId, setDismissedEnquiryId] = useState<string | null>(null)
   const [linkedEnquiryId, setLinkedEnquiryId] = useState<string | null>(null)
+  const [linkedEnquiryInfo, setLinkedEnquiryInfo] = useState<{ phone: string; userId: string | null } | null>(null)
   const [prepDays, setPrepDays] = useState<number>(3)
+
+  const isLinkActive = Boolean(
+    linkedEnquiryId &&
+      linkedEnquiryInfo &&
+      customerPhone.trim() === linkedEnquiryInfo.phone.trim()
+  )
 
   // ── Initial Data Load ──
   useEffect(() => {
@@ -119,6 +126,10 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
     if (!matchedEnquiry) return
 
     setLinkedEnquiryId(matchedEnquiry.id)
+    setLinkedEnquiryInfo({
+      phone: matchedEnquiry.phone,
+      userId: matchedEnquiry.user_id ?? null,
+    })
     setFulfillmentType('delivery')
 
     if (!customerName.trim() && matchedEnquiry.customer_name) {
@@ -269,6 +280,10 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
         tracking_token: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : undefined,
       }
 
+      if (isLinkActive && linkedEnquiryInfo?.userId) {
+        orderPayload.customer_user_id = linkedEnquiryInfo.userId
+      }
+
       const { data: createdOrder, error: orderError } = await supabase
         .from('orders')
         .insert(orderPayload)
@@ -291,7 +306,7 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
       }
 
       // Step 4: If a delivery enquiry was linked, update its status to 'closed'
-      if (linkedEnquiryId) {
+      if (isLinkActive && linkedEnquiryId) {
         try {
           await supabase
             .from('delivery_enquiries')
@@ -301,6 +316,9 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
           console.warn('Error closing linked delivery enquiry:', enquiryErr)
         }
       }
+
+      setLinkedEnquiryId(null)
+      setLinkedEnquiryInfo(null)
 
       onSuccess()
     } catch (err) {
@@ -434,16 +452,45 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
         <div className="space-y-4 pt-2 border-t border-[#E4DDD1]/80">
           {/* Matched Enquiry Notification Banner */}
           {matchedEnquiry && (
-            <div className="bg-[#B8874B]/10 border border-[#B8874B]/40 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-              <div>
-                <p className="font-semibold text-[#4A3728] m-0">
-                  Found a matching delivery enquiry from {matchedEnquiry.customer_name}
-                </p>
-                <p className="text-[#6B7259] text-[11px] mt-0.5 mb-0">
-                  Link and close it to auto-fill address and zone details.
-                </p>
+            <div className="bg-[#B8874B]/10 border border-[#B8874B]/40 p-3.5 flex flex-col sm:flex-row sm:items-start justify-between gap-3 text-xs">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-semibold text-[#4A3728] m-0">
+                    Found a matching delivery enquiry from {matchedEnquiry.customer_name}
+                  </p>
+                  {matchedEnquiry.user_id ? (
+                    <span className="px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xs">
+                      Signed-in account
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider bg-[#FAF7F2] text-[#6B7259] border border-[#E4DDD1] rounded-xs">
+                      Guest enquiry
+                    </span>
+                  )}
+                </div>
+
+                {(matchedEnquiry.landmark || matchedEnquiry.pincode) && (
+                  <p className="text-[11px] text-[#4A3728] m-0">
+                    {[
+                      matchedEnquiry.landmark ? `Landmark: ${matchedEnquiry.landmark}` : null,
+                      matchedEnquiry.pincode ? `Pincode: ${matchedEnquiry.pincode}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' • ')}
+                  </p>
+                )}
+
+                {matchedEnquiry.user_id ? (
+                  <p className="text-[#8C5E28] text-[11px] font-medium m-0 leading-relaxed">
+                    Linking will give this customer account access to this order. Only link if this is the same person.
+                  </p>
+                ) : (
+                  <p className="text-[#6B7259] text-[11px] m-0">
+                    Link and close it to auto-fill address and zone details.
+                  </p>
+                )}
               </div>
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-2 shrink-0 sm:self-center">
                 <button
                   type="button"
                   onClick={handleLinkEnquiry}
@@ -464,16 +511,42 @@ function OrderForm({ onSuccess, onCancel, deliveryEnabled: propDeliveryEnabled }
 
           {/* Linked Enquiry Status */}
           {linkedEnquiryId && (
-            <div className="bg-[#525843]/10 border border-[#525843]/30 px-3 py-2 text-[11px] text-[#525843] flex items-center justify-between">
-              <span>✓ Linked to customer delivery enquiry (will be closed on order creation)</span>
-              <button
-                type="button"
-                onClick={() => setLinkedEnquiryId(null)}
-                className="text-[#A84B3B] hover:underline uppercase text-[10px] font-semibold tracking-wider cursor-pointer"
-              >
-                Unlink
-              </button>
-            </div>
+            isLinkActive ? (
+              <div className="bg-[#525843]/10 border border-[#525843]/30 px-3 py-2 text-[11px] text-[#525843] flex items-center justify-between">
+                <div>
+                  <span>✓ Linked to customer delivery enquiry (will be closed on order creation)</span>
+                  {linkedEnquiryInfo?.userId && (
+                    <p className="text-[10px] text-[#525843] font-medium mt-0.5 mb-0">
+                      This order will be linked to the customer's signed-in account.
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLinkedEnquiryId(null)
+                    setLinkedEnquiryInfo(null)
+                  }}
+                  className="text-[#A84B3B] hover:underline uppercase text-[10px] font-semibold tracking-wider cursor-pointer ml-3 shrink-0"
+                >
+                  Unlink
+                </button>
+              </div>
+            ) : (
+              <div className="bg-amber-50 border border-amber-200/80 px-3 py-2 text-[11px] text-amber-800 flex items-center justify-between">
+                <span>Phone number changed - the linked enquiry is disconnected.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLinkedEnquiryId(null)
+                    setLinkedEnquiryInfo(null)
+                  }}
+                  className="text-[#A84B3B] hover:underline uppercase text-[10px] font-semibold tracking-wider cursor-pointer ml-3 shrink-0"
+                >
+                  Unlink
+                </button>
+              </div>
+            )
           )}
 
           {/* Address Fields */}
