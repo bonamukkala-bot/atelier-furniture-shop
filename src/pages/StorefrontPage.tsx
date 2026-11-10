@@ -1643,6 +1643,12 @@ function StorefrontPage() {
                 >
                   {t('footer.contact')}
                 </a>
+                <Link
+                  to="/privacy"
+                  className="min-h-[44px] inline-flex items-center text-[13px] text-[var(--muted)] hover:text-[var(--gold)] transition-colors"
+                >
+                  {t('footer.privacy')}
+                </Link>
               </nav>
             </div>
 

@@ -684,6 +684,30 @@ export default function OrderTrackingPage() {
           )}
         </section>
       </div>
+
+      {/* Footer */}
+      <footer className="border-t border-[#E4DDD1] bg-[#FAF7F2] py-8 px-4 sm:px-8 mt-16 text-[13px] text-[#6B6B60] w-full">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+          <div className="flex flex-col items-center sm:items-start">
+            <span className="font-fraunces text-base font-semibold text-[#2B2420]">ATELIER</span>
+            <span className="text-[10px] font-semibold tracking-[0.2em] text-[#8A5F25] uppercase">Fine Furniture</span>
+          </div>
+
+          <div className="flex flex-wrap justify-center items-center gap-x-6 gap-y-2">
+            <Link to="/" className="hover:text-[#8A5F25] transition-colors min-h-[44px] inline-flex items-center">
+              Storefront
+            </Link>
+            <span aria-hidden="true" className="text-[#E7E0D4]">·</span>
+            <Link to="/privacy" className="hover:text-[#8A5F25] transition-colors min-h-[44px] inline-flex items-center">
+              Privacy Policy
+            </Link>
+          </div>
+
+          <p className="text-xs uppercase tracking-wider text-[#6B6B60]">
+            © {new Date().getFullYear()} ATELIER. All rights reserved.
+          </p>
+        </div>
+      </footer>
     </main>
   )
 }
