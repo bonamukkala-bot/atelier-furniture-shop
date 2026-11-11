@@ -457,16 +457,12 @@ function AdminDashboardInner() {
     const [
       { count: totalProducts },
       { count: inStock },
-      { count: totalOrders },
-      { count: pendingReviews },
       { data: ordersData },
       { data: productsData },
     ] = await Promise.all([
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('is_archived', false),
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('sold', false).eq('is_archived', false),
-      supabase.from('orders').select('*', { count: 'exact', head: true }),
-      supabase.from('orders').select('*', { count: 'exact', head: true }).eq('review_requested', false),
-      supabase.from('orders').select('total, order_date, product_id, quantity, delivery_status'),
+      supabase.from('orders').select('total, order_date, product_id, quantity, delivery_status, review_requested'),
       supabase.from('products').select('id, name, stock_qty, is_archived'),
     ])
 
@@ -474,6 +470,10 @@ function AdminDashboardInner() {
     const validOrders = (ordersData ?? []).filter(
       (o) => o.delivery_status !== 'cancelled' && o.delivery_status !== 'requested'
     )
+
+    // Calculate total orders and pending reviews from valid orders only
+    const totalOrders = validOrders.length
+    const pendingReviews = validOrders.filter((o) => o.review_requested === false).length
 
     // Calculate total revenue
     const totalRevenue = validOrders.reduce((sum, o) => sum + (o.total ?? 0), 0)
@@ -511,8 +511,8 @@ function AdminDashboardInner() {
     setStats({
       totalProducts: totalProducts ?? 0,
       inStock: inStock ?? 0,
-      totalOrders: totalOrders ?? 0,
-      pendingReviews: pendingReviews ?? 0,
+      totalOrders,
+      pendingReviews,
       totalRevenue,
       thisWeekSales,
       bestSellingProduct,

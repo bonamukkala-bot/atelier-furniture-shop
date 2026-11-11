@@ -6,6 +6,7 @@ export interface ReviewRequestOrder {
   customer_phone?: string | null
   product_name?: string | null
   review_requested?: boolean | null
+  delivery_status?: string | null
   customers?: {
     name?: string | null
     phone?: string | null
@@ -84,15 +85,20 @@ export async function triggerReviewRequest(
       return { success: false, reason: 'Invalid order' }
     }
 
-    // 1. Guard against firing if review_requested is already true
+    // 1. Guard against firing for requested or cancelled orders
+    if (order.delivery_status === 'requested' || order.delivery_status === 'cancelled') {
+      return { success: false, skipped: true, reason: 'Review request skipped: order is requested or cancelled' }
+    }
+
+    // 2. Guard against firing if review_requested is already true
     if (order.review_requested) {
       return { success: false, skipped: true, reason: 'Review request already marked as sent' }
     }
 
-    // Verify current review_requested status directly from DB to prevent race conditions
+    // Verify current review_requested and delivery_status directly from DB to prevent race conditions
     const { data: currentOrder, error: checkError } = await supabase
       .from('orders')
-      .select('review_requested')
+      .select('review_requested, delivery_status')
       .eq('id', order.id)
       .maybeSingle()
 
@@ -100,6 +106,8 @@ export async function triggerReviewRequest(
       console.warn('Failed to verify review_requested status from DB:', checkError)
     } else if (currentOrder?.review_requested) {
       return { success: false, skipped: true, reason: 'Review request already sent' }
+    } else if (currentOrder?.delivery_status === 'requested' || currentOrder?.delivery_status === 'cancelled') {
+      return { success: false, skipped: true, reason: 'Review request skipped: order is requested or cancelled' }
     }
 
     // 2. Resolve Customer Phone

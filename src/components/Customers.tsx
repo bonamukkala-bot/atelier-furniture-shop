@@ -95,7 +95,11 @@ function Customers() {
 
       if (error) throw error
 
-      const orders = (data ?? []).map((order: any) => ({
+      const validOrders = (data ?? []).filter(
+        (order) => order.delivery_status !== 'cancelled' && order.delivery_status !== 'requested'
+      )
+
+      const orders = validOrders.map((order: any) => ({
         id: order.id,
         product_name: order.products?.name ?? 'Unknown product',
         quantity: order.quantity,

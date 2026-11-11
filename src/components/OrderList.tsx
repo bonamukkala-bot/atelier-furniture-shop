@@ -6,6 +6,28 @@ interface OrderListProps {
   refreshKey: number
 }
 
+function getOrderStatusLabel(order: { fulfillment_type?: string | null; delivery_status?: string | null }): string {
+  if (order.fulfillment_type === 'pickup') {
+    return 'Pickup'
+  }
+  const s = order.delivery_status
+  if (!s) return '—'
+  switch (s) {
+    case 'confirmed':
+      return 'Confirmed'
+    case 'preparing':
+      return 'Preparing'
+    case 'out_for_delivery':
+      return 'Out for delivery'
+    case 'delivered':
+      return 'Delivered'
+    case 'issue':
+      return 'Issue'
+    default:
+      return s
+  }
+}
+
 function OrderList({ refreshKey }: OrderListProps) {
   const [orders, setOrders] = useState<OrderWithDetails[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,12 +59,18 @@ function OrderList({ refreshKey }: OrderListProps) {
     if (error) {
       setError(error.message)
     } else {
-      const formatted: OrderWithDetails[] = (data ?? []).map((o: any) => ({
+      const validOrders = (data ?? []).filter(
+        (o: any) => o.delivery_status !== 'cancelled' && o.delivery_status !== 'requested'
+      )
+      const formatted: OrderWithDetails[] = validOrders.map((o: any) => ({
         id: o.id,
         customer_id: o.customer_id,
+        customer_user_id: o.customer_user_id,
         product_id: o.product_id,
         quantity: o.quantity,
         status: o.status,
+        fulfillment_type: o.fulfillment_type,
+        delivery_status: o.delivery_status,
         order_date: o.order_date,
         total: o.total,
         review_requested: o.review_requested,
@@ -102,7 +130,7 @@ function OrderList({ refreshKey }: OrderListProps) {
 
   // ── CSV Export function ──
   function exportToCSV() {
-    const headers = ['Customer Name', 'Phone', 'Product', 'Quantity', 'Order Date', 'Total']
+    const headers = ['Customer Name', 'Phone', 'Product', 'Quantity', 'Order Date', 'Total', 'Status']
     const rows = displayedOrders.map((o) => [
       o.customer_name,
       o.customer_phone || '',
@@ -110,6 +138,7 @@ function OrderList({ refreshKey }: OrderListProps) {
       o.quantity?.toString() || '',
       o.order_date || '',
       o.total?.toString() || '',
+      getOrderStatusLabel(o),
     ])
     const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
@@ -288,7 +317,7 @@ function OrderList({ refreshKey }: OrderListProps) {
                   borderBottom: '1px solid #E4DDD1',
                 }}
               >
-                {['Customer', 'Product', 'Quantity', 'Date of Purchase', 'Total', 'Review Requested'].map((h) => (
+                {['Customer', 'Product', 'Quantity', 'Date of Purchase', 'Total', 'Status', 'Review Requested'].map((h) => (
                   <th
                     key={h}
                     style={{
@@ -339,6 +368,9 @@ function OrderList({ refreshKey }: OrderListProps) {
                   </td>
                   <td style={{ padding: '12px 14px', fontWeight: 600, color: '#B8874B' }}>
                     {order.total ? `₹${order.total.toLocaleString('en-IN')}` : '—'}
+                  </td>
+                  <td style={{ padding: '12px 14px', color: '#4A3728', fontSize: 12 }}>
+                    {getOrderStatusLabel(order)}
                   </td>
                   <td style={{ padding: '12px 14px' }}>
                     {order.review_requested ? (
