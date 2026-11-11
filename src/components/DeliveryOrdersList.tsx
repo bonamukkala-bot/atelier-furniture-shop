@@ -55,6 +55,24 @@ const DELIVERY_STATUS_CONFIG: Record<
     },
     waMessage: 'There is an update regarding your delivery schedule. Please get in touch with us.',
   },
+  requested: {
+    label: 'Requested',
+    badgeStyle: {
+      background: 'rgba(217, 119, 6, 0.12)',
+      color: '#B45309',
+      border: '1px solid rgba(217, 119, 6, 0.35)',
+    },
+    waMessage: 'We have received your order request and will confirm shortly.',
+  },
+  cancelled: {
+    label: 'Cancelled',
+    badgeStyle: {
+      background: 'rgba(107, 114, 128, 0.12)',
+      color: '#4B5563',
+      border: '1px solid rgba(107, 114, 128, 0.35)',
+    },
+    waMessage: 'Your order request could not be fulfilled and has been cancelled.',
+  },
 }
 
 export default function DeliveryOrdersList() {
@@ -86,6 +104,7 @@ export default function DeliveryOrdersList() {
 
   // ── Delivery Confirmation Modal State ──
   const [confirmModalOrder, setConfirmModalOrder] = useState<OrderWithDetails | null>(null)
+  const [actionBusyOrderId, setActionBusyOrderId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchDeliveryOrders()
@@ -152,8 +171,21 @@ export default function DeliveryOrdersList() {
     return result
   }, [orders, statusFilter, searchQuery])
 
+  // ── Status Counts for Filter Tabs ──
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: orders.length }
+    orders.forEach((o) => {
+      const s = o.delivery_status || 'confirmed'
+      counts[s] = (counts[s] || 0) + 1
+    })
+    return counts
+  }, [orders])
+
   // ── Open Edit Status Modal ──
   function openEditModal(order: OrderWithDetails) {
+    if (order.delivery_status === 'requested' || order.delivery_status === 'cancelled') {
+      return
+    }
     setEditingOrder(order)
     setNewStatus(order.delivery_status || 'confirmed')
     setPartnerName(order.delivery_partner_name || '')
@@ -256,6 +288,95 @@ export default function DeliveryOrdersList() {
       showToast(err instanceof Error ? err.message : 'Failed to update status', 'error')
     } finally {
       setSavingUpdate(false)
+    }
+  }
+
+  // ── Confirm Customer Order Request ──
+  async function handleConfirmRequest(order: OrderWithDetails) {
+    if (actionBusyOrderId === order.id) return
+    setActionBusyOrderId(order.id)
+    try {
+      const { data, error: updateErr } = await supabase
+        .from('orders')
+        .update({ delivery_status: 'confirmed' })
+        .eq('id', order.id)
+        .eq('delivery_status', 'requested')
+        .select('id')
+
+      if (updateErr) {
+        showToast(updateErr.message, 'error')
+        return
+      }
+
+      if (!data || data.length === 0) {
+        showToast('This order is no longer in the Requested state.', 'error')
+        await fetchDeliveryOrders()
+        return
+      }
+
+      const { error: histError } = await supabase
+        .from('delivery_status_history')
+        .insert({
+          order_id: order.id,
+          status: 'confirmed',
+          note: 'Order confirmed by studio',
+        })
+
+      if (histError) {
+        console.warn('Failed to insert history log:', histError)
+      }
+
+      showToast('Order confirmed and stock allocated.', 'success')
+      await fetchDeliveryOrders()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to confirm order.', 'error')
+    } finally {
+      setActionBusyOrderId(null)
+    }
+  }
+
+  // ── Reject / Cancel Customer Order Request ──
+  async function handleRejectRequest(order: OrderWithDetails) {
+    if (actionBusyOrderId === order.id) return
+    if (!window.confirm('Are you sure you want to cancel this order request?')) return
+    setActionBusyOrderId(order.id)
+    try {
+      const { data, error: updateErr } = await supabase
+        .from('orders')
+        .update({ delivery_status: 'cancelled' })
+        .eq('id', order.id)
+        .eq('delivery_status', 'requested')
+        .select('id')
+
+      if (updateErr) {
+        showToast(updateErr.message, 'error')
+        return
+      }
+
+      if (!data || data.length === 0) {
+        showToast('This order is no longer in the Requested state.', 'error')
+        await fetchDeliveryOrders()
+        return
+      }
+
+      const { error: histError } = await supabase
+        .from('delivery_status_history')
+        .insert({
+          order_id: order.id,
+          status: 'cancelled',
+          note: 'Order request cancelled by studio',
+        })
+
+      if (histError) {
+        console.warn('Failed to insert history log:', histError)
+      }
+
+      showToast('Order request cancelled.', 'success')
+      await fetchDeliveryOrders()
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to cancel order.', 'error')
+    } finally {
+      setActionBusyOrderId(null)
     }
   }
 
@@ -403,14 +524,17 @@ export default function DeliveryOrdersList() {
             {(
               [
                 { key: 'all', label: 'All Orders' },
+                { key: 'requested', label: 'Requested' },
                 { key: 'confirmed', label: 'Confirmed' },
                 { key: 'preparing', label: 'Preparing' },
                 { key: 'out_for_delivery', label: 'Out for Delivery' },
                 { key: 'delivered', label: 'Delivered' },
                 { key: 'issue', label: 'Issue' },
+                { key: 'cancelled', label: 'Cancelled' },
               ] as const
             ).map((tab) => {
               const active = statusFilter === tab.key
+              const count = statusCounts[tab.key] ?? 0
               return (
                 <button
                   key={tab.key}
@@ -431,7 +555,7 @@ export default function DeliveryOrdersList() {
                     transition: 'all 0.15s',
                   }}
                 >
-                  {tab.label}
+                  {tab.label} {count > 0 ? `(${count})` : ''}
                 </button>
               )
             })}
@@ -673,32 +797,97 @@ export default function DeliveryOrdersList() {
                           </button>
                         )}
 
-                        {/* Update Status Button */}
-                        <button
-                          type="button"
-                          onClick={() => openEditModal(order)}
-                          style={{
-                            background: '#FAF7F2',
-                            border: '1px solid #E4DDD1',
-                            color: '#4A3728',
-                            padding: '6px 10px',
-                            fontSize: 11,
-                            fontWeight: 600,
-                            borderRadius: 2,
-                            cursor: 'pointer',
-                            transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = '#B8874B'
-                            e.currentTarget.style.color = '#B8874B'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = '#E4DDD1'
-                            e.currentTarget.style.color = '#4A3728'
-                          }}
-                        >
-                          Update Status
-                        </button>
+                        {/* Requested Action Buttons (Confirm & Reject) */}
+                        {order.delivery_status === 'requested' && (
+                          <>
+                            <button
+                              type="button"
+                              disabled={actionBusyOrderId === order.id}
+                              onClick={() => handleConfirmRequest(order)}
+                              title="Confirm this customer request and allocate inventory"
+                              style={{
+                                background: '#4A5D3E',
+                                color: '#FFFFFF',
+                                border: 'none',
+                                padding: '6px 12px',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                letterSpacing: '0.04em',
+                                borderRadius: 2,
+                                cursor: actionBusyOrderId === order.id ? 'not-allowed' : 'pointer',
+                                opacity: actionBusyOrderId === order.id ? 0.6 : 1,
+                                transition: 'all 0.15s',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (actionBusyOrderId !== order.id) e.currentTarget.style.background = '#384E2E'
+                              }}
+                              onMouseLeave={(e) => {
+                                if (actionBusyOrderId !== order.id) e.currentTarget.style.background = '#4A5D3E'
+                              }}
+                            >
+                              Confirm Order
+                            </button>
+                            <button
+                              type="button"
+                              disabled={actionBusyOrderId === order.id}
+                              onClick={() => handleRejectRequest(order)}
+                              title="Reject this customer order request"
+                              style={{
+                                background: 'transparent',
+                                border: '1px solid #A84B3B',
+                                color: '#A84B3B',
+                                padding: '5px 10px',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                borderRadius: 2,
+                                cursor: actionBusyOrderId === order.id ? 'not-allowed' : 'pointer',
+                                opacity: actionBusyOrderId === order.id ? 0.6 : 1,
+                                transition: 'all 0.15s',
+                              }}
+                              onMouseEnter={(e) => {
+                                if (actionBusyOrderId !== order.id) {
+                                  e.currentTarget.style.background = '#FEF2F2'
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                if (actionBusyOrderId !== order.id) {
+                                  e.currentTarget.style.background = 'transparent'
+                                }
+                              }}
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+
+                        {/* Update Status Button (Hidden for requested & cancelled) */}
+                        {order.delivery_status !== 'requested' && order.delivery_status !== 'cancelled' && (
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(order)}
+                            style={{
+                              background: '#FAF7F2',
+                              border: '1px solid #E4DDD1',
+                              color: '#4A3728',
+                              padding: '6px 10px',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              borderRadius: 2,
+                              cursor: 'pointer',
+                              transition: 'all 0.15s',
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.borderColor = '#B8874B'
+                              e.currentTarget.style.color = '#B8874B'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.borderColor = '#E4DDD1'
+                              e.currentTarget.style.color = '#4A3728'
+                            }}
+                          >
+                            Update Status
+                          </button>
+                        )}
 
                         {/* WhatsApp Notification Button */}
                         <button

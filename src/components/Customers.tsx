@@ -58,7 +58,12 @@ function Customers() {
 
       // Calculate stats for each customer
       const customersWithStats = (customersData ?? []).map((customer: Customer) => {
-        const customerOrders = (ordersData ?? []).filter((order: any) => order.customer_id === customer.id)
+        const customerOrders = (ordersData ?? []).filter(
+          (order) =>
+            order.customer_id === customer.id &&
+            order.delivery_status !== 'cancelled' &&
+            order.delivery_status !== 'requested'
+        )
         const totalOrders = customerOrders.length
         const totalSpent = customerOrders.reduce((sum: number, order: any) => sum + (order.total || 0), 0)
 

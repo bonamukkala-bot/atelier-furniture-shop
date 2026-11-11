@@ -419,6 +419,7 @@ function AdminDashboardInner() {
       .from('orders')
       .select(`
         *,
+        delivery_status,
         customers ( name, phone ),
         products ( name )
       `)
@@ -431,6 +432,7 @@ function AdminDashboardInner() {
       const delayDays = settingsData?.review_delay_days ?? 4
 
       const dueOrders = ordersData
+        .filter((order) => order.delivery_status !== 'cancelled' && order.delivery_status !== 'requested')
         .map((order: any) => ({
           id: order.id,
           customer_name: order.customers?.name ?? 'Unknown',
@@ -464,23 +466,28 @@ function AdminDashboardInner() {
       supabase.from('products').select('*', { count: 'exact', head: true }).eq('sold', false).eq('is_archived', false),
       supabase.from('orders').select('*', { count: 'exact', head: true }),
       supabase.from('orders').select('*', { count: 'exact', head: true }).eq('review_requested', false),
-      supabase.from('orders').select('total, order_date, product_id, quantity'),
+      supabase.from('orders').select('total, order_date, product_id, quantity, delivery_status'),
       supabase.from('products').select('id, name, stock_qty, is_archived'),
     ])
 
+    // Filter out cancelled and unconfirmed requested orders (NULL delivery_status passes through for pickup orders)
+    const validOrders = (ordersData ?? []).filter(
+      (o) => o.delivery_status !== 'cancelled' && o.delivery_status !== 'requested'
+    )
+
     // Calculate total revenue
-    const totalRevenue = (ordersData ?? []).reduce((sum, o) => sum + (o.total ?? 0), 0)
+    const totalRevenue = validOrders.reduce((sum, o) => sum + (o.total ?? 0), 0)
 
     // Calculate this week's sales (last 7 days)
     const sevenDaysAgo = new Date()
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-    const thisWeekSales = (ordersData ?? [])
+    const thisWeekSales = validOrders
       .filter((o) => o.order_date && new Date(o.order_date) >= sevenDaysAgo)
       .reduce((sum, o) => sum + (o.total ?? 0), 0)
 
     // Find best-selling product
     const productSales = new Map<string, number>()
-    ;(ordersData ?? []).forEach((o) => {
+    validOrders.forEach((o) => {
       const current = productSales.get(o.product_id) ?? 0
       productSales.set(o.product_id, current + (o.quantity ?? 0))
     })

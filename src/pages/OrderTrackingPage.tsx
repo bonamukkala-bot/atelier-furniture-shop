@@ -276,6 +276,8 @@ export default function OrderTrackingPage() {
   const isIssue = currentStatus === 'issue'
   const isDelivered = currentStatus === 'delivered'
   const isOutForDelivery = currentStatus === 'out_for_delivery'
+  const isRequested = currentStatus === 'requested'
+  const isCancelled = currentStatus === 'cancelled'
   const isPartnerAccepted = Boolean(order.partner_accepted_at)
 
   let currentStepIndex = 0
@@ -385,76 +387,102 @@ export default function OrderTrackingPage() {
           </div>
         )}
 
-        {/* ── Step Tracker Card ── */}
-        <section className="bg-white border border-[#E4DDD1] p-6 sm:p-8 mb-8 shadow-xs">
-          <div className="flex items-center justify-between mb-8">
-            <h2 className="text-xs uppercase tracking-widest font-semibold text-[#6B7259] font-inter">
-              Delivery Progress
-            </h2>
-            {isIssue && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#FEF2F2] text-[#991B1B] border border-[#FECACA]">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#DC2626] animate-pulse" />
-                Delivery Paused
-              </span>
-            )}
-          </div>
+        {/* ── Status Banner or Step Tracker Card ── */}
+        {isRequested ? (
+          <section className="bg-white border border-[#E4DDD1] p-6 sm:p-8 mb-8 shadow-xs">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#B45309] animate-pulse" />
+              <h2 className="text-base font-semibold text-[#2B2420] font-fraunces">
+                Order Requested — Awaiting Studio Confirmation
+              </h2>
+            </div>
+            <p className="text-sm text-[#6B7259] font-inter leading-relaxed">
+              We have received your order request. Our workshop team is reviewing available inventory and handcrafted scheduling. You will receive an update once your order is confirmed.
+            </p>
+          </section>
+        ) : isCancelled ? (
+          <section className="bg-white border border-[#E4DDD1] p-6 sm:p-8 mb-8 shadow-xs">
+            <div className="flex items-center gap-3 mb-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#9CA3AF]" />
+              <h2 className="text-base font-semibold text-[#4B5563] font-fraunces">
+                Order Request Cancelled
+              </h2>
+            </div>
+            <p className="text-sm text-[#6B7259] font-inter leading-relaxed">
+              This order request could not be fulfilled and was cancelled by the studio. No charges were incurred.
+            </p>
+          </section>
+        ) : (
+          <section className="bg-white border border-[#E4DDD1] p-6 sm:p-8 mb-8 shadow-xs">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-xs uppercase tracking-widest font-semibold text-[#6B7259] font-inter">
+                Delivery Progress
+              </h2>
+              {isIssue && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-[#FEF2F2] text-[#991B1B] border border-[#FECACA]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#DC2626] animate-pulse" />
+                  Delivery Paused
+                </span>
+              )}
+            </div>
 
-          <div className="relative">
-            {/* Steps Container */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6 relative z-10">
-              {STEPS.map((step, idx) => {
-                const isCompleted = !isIssue && (isDelivered ? idx <= currentStepIndex : idx < currentStepIndex)
-                const isActive = !isIssue && !isDelivered && currentStepIndex === idx
+            <div className="relative">
+              {/* Steps Container */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6 relative z-10">
+                {STEPS.map((step, idx) => {
+                  const isCompleted = !isIssue && (isDelivered ? idx <= currentStepIndex : idx < currentStepIndex)
+                  const isActive = !isIssue && !isDelivered && currentStepIndex === idx
 
-                return (
-                  <div key={step.key} className="flex flex-col items-center text-center">
-                    {/* Step Icon / Circle */}
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-xs transition-all duration-300 ${
-                        isCompleted
-                          ? 'bg-[#B8874B] text-white'
-                          : isActive
-                          ? 'bg-[#FAF7F2] border-2 border-[#B8874B] text-[#B8874B] ring-4 ring-[#B8874B]/20'
-                          : 'bg-[#FAF7F2] border border-[#E4DDD1] text-[#A0988A]'
-                      }`}
-                    >
-                      {isCompleted ? (
-                        <svg
-                          className="w-4 h-4 text-white"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth="3"
-                        >
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        <span>{idx + 1}</span>
-                      )}
-                    </div>
-
-                    {/* Step Label */}
-                    <div className="mt-3">
-                      <p
-                        className={`text-xs sm:text-sm font-semibold ${
-                          isActive || isCompleted ? 'text-[#2B2420]' : 'text-[#8C827A]'
+                  return (
+                    <div key={step.key} className="flex flex-col items-center text-center">
+                      {/* Step Icon / Circle */}
+                      <div
+                        className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold text-xs transition-all duration-300 ${
+                          isCompleted
+                            ? 'bg-[#B8874B] text-white'
+                            : isActive
+                            ? 'bg-[#FAF7F2] border-2 border-[#B8874B] text-[#B8874B] ring-4 ring-[#B8874B]/20'
+                            : 'bg-[#FAF7F2] border border-[#E4DDD1] text-[#A0988A]'
                         }`}
                       >
-                        {step.label}
-                      </p>
-                      <p className="text-[11px] text-[#6B7259] mt-0.5 max-w-[140px] leading-tight">
-                        {step.desc}
-                      </p>
+                        {isCompleted ? (
+                          <svg
+                            className="w-4 h-4 text-white"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth="3"
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          <span>{idx + 1}</span>
+                        )}
+                      </div>
+
+                      {/* Step Label */}
+                      <div className="mt-3">
+                        <p
+                          className={`text-xs sm:text-sm font-semibold ${
+                            isActive || isCompleted ? 'text-[#2B2420]' : 'text-[#8C827A]'
+                          }`}
+                        >
+                          {step.label}
+                        </p>
+                        <p className="text-[11px] text-[#6B7259] mt-0.5 max-w-[140px] leading-tight">
+                          {step.desc}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* ── Delivery Confirmation Code (Visible ONLY when Out for Delivery) ── */}
-        {(order.delivery_status || '').toLowerCase().trim() === 'out_for_delivery' && order.delivery_confirmation_code && (
+        {!isRequested && !isCancelled && (order.delivery_status || '').toLowerCase().trim() === 'out_for_delivery' && order.delivery_confirmation_code && (
           <div className="mb-8 p-6 sm:p-8 bg-[#FAF7F2] border-2 border-[#B8874B] text-center shadow-xs">
             <div className="inline-flex items-center gap-2 bg-[#B8874B]/15 text-[#8F632E] px-3 py-1 text-xs font-semibold uppercase tracking-wider mb-3">
               <svg className="w-4 h-4 text-[#8F632E]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -553,7 +581,7 @@ export default function OrderTrackingPage() {
                   </p>
                 </div>
 
-                {deliveryZone && (
+                {!isRequested && !isCancelled && deliveryZone && (
                   <div>
                     <span className="text-[11px] uppercase tracking-wider text-[#6B7259] block font-semibold">
                       Estimated Delivery
@@ -569,7 +597,7 @@ export default function OrderTrackingPage() {
                   </div>
                 )}
 
-                {order.delivery_partner_name && (
+                {!isRequested && !isCancelled && order.delivery_partner_name && (
                   <div>
                     <span className="text-[11px] uppercase tracking-wider text-[#6B7259] block font-semibold">
                       Assigned Courier / Partner
@@ -620,7 +648,13 @@ export default function OrderTrackingPage() {
 
           {history.length === 0 ? (
             <div className="py-6 text-center text-xs text-[#6B7259]">
-              <p>No activity logs recorded yet. Your delivery is being scheduled.</p>
+              <p>
+                {isRequested
+                  ? 'Your order request has been submitted to the studio.'
+                  : isCancelled
+                  ? 'This order request was cancelled.'
+                  : 'No activity logs recorded yet. Your delivery is being scheduled.'}
+              </p>
             </div>
           ) : (
             <div className="relative pl-6 space-y-6 before:content-[''] before:absolute before:left-2 before:top-2 before:bottom-2 before:w-[2px] before:bg-[#E4DDD1]">
@@ -631,7 +665,13 @@ export default function OrderTrackingPage() {
                 let badgeBg = 'bg-[#FAF7F2] text-[#4A3728] border-[#E4DDD1]'
                 let badgeLabel = histStatus.replace(/_/g, ' ')
 
-                if (histStatus === 'confirmed') {
+                if (histStatus === 'requested') {
+                  badgeBg = 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+                  badgeLabel = 'Order Requested'
+                } else if (histStatus === 'cancelled') {
+                  badgeBg = 'bg-[#F3F4F6] text-[#4B5563] border-[#E5E7EB]'
+                  badgeLabel = 'Request Cancelled'
+                } else if (histStatus === 'confirmed') {
                   badgeBg = 'bg-[#F2ECE1] text-[#4A3728] border-[#D9CEBF]'
                   badgeLabel = 'Order Confirmed'
                 } else if (histStatus === 'preparing') {
