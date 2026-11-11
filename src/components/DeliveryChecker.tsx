@@ -76,6 +76,8 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
   }
 
   // ── Enquiry form state ──
+  const [showEnquiryForm, setShowEnquiryForm] = useState(false)
+  const enquiryCardRef = useRef<HTMLDivElement>(null)
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [doorFlatBuilding, setDoorFlatBuilding] = useState('')
@@ -642,6 +644,15 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
 
       {/* ── Delivery Checker Box ──────────────────────────────────────── */}
       <div className="bg-[#FAF7F2] border border-[#E4DDD1] p-5 sm:p-6 mb-6">
+        {user && (
+          <SavedAddressPicker
+            userId={user.id}
+            selectedId={selectedAddressId}
+            refreshKey={refreshKey}
+            onSelect={handleSelectSavedAddress}
+          />
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <label
             htmlFor="address-search-input"
@@ -941,40 +952,60 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
         )}
       </div>
 
-      {/* ── Enquiry Form ──────────────────────────────────────────────── */}
-      <div className="bg-white border border-[#E4DDD1] p-5 sm:p-6 shadow-sm">
-        <h3 className="font-fraunces text-lg text-[#2B2420] mb-1">
-          Request Delivery / Custom Quote
-        </h3>
-        <p className="font-inter text-xs text-[#6B7259] mb-4">
-          Submit your details to check final delivery logistics and connect directly with our team on WhatsApp.
-        </p>
+      {/* ── Enquiry Form Toggle & Card ─────────────────────────────────── */}
+      {!showEnquiryForm && !submitSuccess && (
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => {
+              setShowEnquiryForm(true)
+              setTimeout(() => {
+                enquiryCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }, 50)
+            }}
+            aria-expanded={false}
+            className="text-xs sm:text-sm font-inter text-[#B8874B] underline underline-offset-4 hover:text-[#4A3728] transition-colors cursor-pointer text-left"
+          >
+            Can't get delivery to your area, or need a custom quote? Send an enquiry
+          </button>
+        </div>
+      )}
 
-        {formError && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-inter rounded-sm">
-            {formError}
+      {(showEnquiryForm || submitSuccess) && (
+        <div ref={enquiryCardRef} className="bg-white border border-[#E4DDD1] p-5 sm:p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4 mb-1">
+            <h3 className="font-fraunces text-lg text-[#2B2420]">
+              Request Delivery / Custom Quote
+            </h3>
+            <button
+              type="button"
+              onClick={() => setShowEnquiryForm(false)}
+              aria-expanded={true}
+              className="text-xs font-inter text-[#6B7259] hover:text-[#4A3728] underline underline-offset-2 transition-colors cursor-pointer shrink-0"
+            >
+              Hide enquiry form
+            </button>
           </div>
-        )}
+          <p className="font-inter text-xs text-[#6B7259] mb-4">
+            Submit your details to check final delivery logistics and connect directly with our team on WhatsApp.
+          </p>
 
-        {submitSuccess && (
-          <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-inter rounded-sm flex items-center gap-2">
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <span>Your delivery enquiry has been recorded and WhatsApp opened!</span>
-          </div>
-        )}
+          {formError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-inter rounded-sm">
+              {formError}
+            </div>
+          )}
 
-        {user && (
-          <SavedAddressPicker
-            userId={user.id}
-            selectedId={selectedAddressId}
-            refreshKey={refreshKey}
-            onSelect={handleSelectSavedAddress}
-          />
-        )}
+          {submitSuccess && (
+            <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-inter rounded-sm flex items-center gap-2">
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span>Your delivery enquiry has been recorded and WhatsApp opened!</span>
+            </div>
+          )}
 
-        <form onSubmit={handleEnquirySubmit} className="space-y-4">
+          <form onSubmit={handleEnquirySubmit} className="space-y-4">
           <div>
             <label className="block font-inter text-[11px] font-semibold uppercase tracking-wider text-[#6B7259] mb-1">
               Your Name <span className="text-[#B8874B]">*</span>
@@ -1008,7 +1039,7 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
             <label className="block font-inter text-[11px] font-semibold uppercase tracking-wider text-[#6B7259] mb-1">
               Delivery Area / Address
             </label>
-            <div className="bg-[#FAF7F2] border border-[#E4DDD1] px-3.5 py-2.5 text-xs flex items-center justify-between">
+            <div className="bg-[#FAF7F2] border border-[#E4DDD1] px-3.5 py-2.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               {resolvedAddress || searchQuery || pincodeInput ? (
                 <span className="text-[#2B2420] font-medium">
                   Selected area:{' '}
@@ -1122,6 +1153,7 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
           </div>
         </form>
       </div>
+      )}
     </div>
   )
 }
