@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -366,12 +366,62 @@ function AdminDashboardInner() {
   const [reviewRequestsLoading, setReviewRequestsLoading] = useState(true)
   const [newEnquiriesCount, setNewEnquiriesCount] = useState(0)
   const [staleEnquiriesCount, setStaleEnquiriesCount] = useState(0)
+  const [requestedOrdersCount, setRequestedOrdersCount] = useState(0)
+  const requestedOrdersInFlightRef = useRef(false)
 
   // ── Refresh keys ──
   const [productRefreshKey, setProductRefreshKey] = useState(0)
   const [orderRefreshKey, setOrderRefreshKey] = useState(0)
   const [workerRefreshKey, setWorkerRefreshKey] = useState(0)
   const [attendanceRefreshKey, setAttendanceRefreshKey] = useState(0)
+
+  const fetchRequestedOrdersCount = useCallback(async () => {
+    if (requestedOrdersInFlightRef.current) return
+    requestedOrdersInFlightRef.current = true
+    try {
+      const { count, error } = await supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .eq('delivery_status', 'requested')
+
+      if (!error && typeof count === 'number') {
+        setRequestedOrdersCount(count)
+      }
+    } catch (err) {
+      console.warn('Could not fetch requested orders count:', err)
+    } finally {
+      requestedOrdersInFlightRef.current = false
+    }
+  }, [])
+
+  useEffect(() => {
+    void fetchRequestedOrdersCount()
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void fetchRequestedOrdersCount()
+      }
+    }, 30_000)
+
+    const handleFocus = () => {
+      void fetchRequestedOrdersCount()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void fetchRequestedOrdersCount()
+      }
+    }
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [fetchRequestedOrdersCount])
 
   useEffect(() => {
     fetchStats()
@@ -631,7 +681,7 @@ function AdminDashboardInner() {
     }
   }
 
-  const navItems: { view: ActiveView; label: string; icon: React.ReactNode; badge?: number; staleBadge?: number }[] = [
+  const navItems: { view: ActiveView; label: string; icon: React.ReactNode; ordersBadge?: number; badge?: number; staleBadge?: number }[] = [
     { view: 'dashboard', label: 'Dashboard', icon: <IconDashboard /> },
     { view: 'products', label: 'Products', icon: <IconProducts /> },
     { view: 'orders', label: 'Orders', icon: <IconOrders /> },
@@ -641,6 +691,7 @@ function AdminDashboardInner() {
             view: 'delivery-enquiries' as ActiveView,
             label: 'Deliveries',
             icon: <IconDelivery />,
+            ordersBadge: requestedOrdersCount,
             badge: newEnquiriesCount,
             staleBadge: staleEnquiriesCount,
           },
@@ -679,8 +730,10 @@ function AdminDashboardInner() {
 
         .admin-nav-item {
           display: flex;
+          flex-wrap: wrap;
           align-items: center;
-          gap: 12px;
+          column-gap: 12px;
+          row-gap: 6px;
           padding: 14px 20px;
           min-height: 46px;
           border-radius: 8px;
@@ -1079,61 +1132,111 @@ function AdminDashboardInner() {
             >
               Navigation
             </div>
-            {navItems.map(({ view, label, icon, badge, staleBadge }) => (
-              <button
-                key={view}
-                onClick={() => goTo(view)}
-                className={`admin-nav-item${activeView === view ? ' active' : ''}`}
-              >
-                {icon}
-                <span>{label}</span>
-                {badge !== undefined && badge > 0 && (
-                  <div
+            {navItems.map(({ view, label, icon, ordersBadge, badge, staleBadge }) => {
+              const hasOrdersBadge = ordersBadge !== undefined && ordersBadge > 0
+              const hasEnquiriesBadge = badge !== undefined && badge > 0
+              const ordersLabelText = hasOrdersBadge
+                ? ordersBadge > 99
+                  ? '99+ orders'
+                  : `${ordersBadge} ${ordersBadge === 1 ? 'order' : 'orders'}`
+                : ''
+              return (
+                <button
+                  key={view}
+                  onClick={() => goTo(view)}
+                  className={`admin-nav-item${activeView === view ? ' active' : ''}`}
+                >
+                  <span
                     style={{
-                      marginLeft: 'auto',
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      gap: 5,
+                      gap: 12,
+                      flexShrink: 0,
+                      whiteSpace: 'nowrap',
                     }}
                   >
-                    <span
-                      title={`${badge} new`}
+                    {icon}
+                    <span>{label}</span>
+                  </span>
+                  {(hasOrdersBadge || hasEnquiriesBadge) && (
+                    <div
                       style={{
-                        background: '#B8874B',
-                        color: '#FAF7F2',
-                        fontSize: 10,
-                        fontWeight: 700,
-                        padding: '1px 6px',
-                        borderRadius: 10,
-                        minWidth: 18,
-                        textAlign: 'center',
-                        lineHeight: '16px',
+                        marginLeft: 'auto',
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        justifyContent: 'flex-end',
+                        gap: 5,
                       }}
                     >
-                      {badge}
-                    </span>
-                    {staleBadge !== undefined && staleBadge > 0 && (
-                      <span
-                        title={`${staleBadge} overdue enquiries (>48h)`}
-                        style={{
-                          background: '#C0523C',
-                          color: '#FAF7F2',
-                          fontSize: 10,
-                          fontWeight: 700,
-                          padding: '1px 6px',
-                          borderRadius: 10,
-                          minWidth: 18,
-                          textAlign: 'center',
-                          lineHeight: '16px',
-                        }}
-                      >
-                        {staleBadge} overdue
-                      </span>
-                    )}
-                  </div>
-                )}
-              </button>
-            ))}
+                      {hasOrdersBadge && (
+                        <span
+                          title={`${ordersBadge} new online orders`}
+                          aria-label={`${ordersBadge} new online orders`}
+                          style={{
+                            background: '#6B7259',
+                            color: '#FAF7F2',
+                            fontSize: 10,
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: 10,
+                            minWidth: 18,
+                            textAlign: 'center',
+                            lineHeight: '16px',
+                            whiteSpace: 'nowrap',
+                            flexShrink: 0,
+                          }}
+                        >
+                          {ordersLabelText}
+                        </span>
+                      )}
+                      {hasEnquiriesBadge && (
+                        <>
+                          <span
+                            title={`${badge} new`}
+                            style={{
+                              background: '#B8874B',
+                              color: '#FAF7F2',
+                              fontSize: 10,
+                              fontWeight: 700,
+                              padding: '1px 6px',
+                              borderRadius: 10,
+                              minWidth: 18,
+                              textAlign: 'center',
+                              lineHeight: '16px',
+                              whiteSpace: 'nowrap',
+                              flexShrink: 0,
+                            }}
+                          >
+                            {badge}
+                          </span>
+                          {staleBadge !== undefined && staleBadge > 0 && (
+                            <span
+                              title={`${staleBadge} overdue enquiries (>48h)`}
+                              style={{
+                                background: '#C0523C',
+                                color: '#FAF7F2',
+                                fontSize: 10,
+                                fontWeight: 700,
+                                padding: '1px 6px',
+                                borderRadius: 10,
+                                minWidth: 18,
+                                textAlign: 'center',
+                                lineHeight: '16px',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                              }}
+                            >
+                              {staleBadge} overdue
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                </button>
+              )
+            })}
           </nav>
 
           {/* Log Out */}
@@ -1204,10 +1307,48 @@ function AdminDashboardInner() {
           >
             <button
               onClick={() => setSidebarOpen(true)}
-              style={{ background: 'none', border: 'none', color: '#FAF7F2', cursor: 'pointer', padding: 4, display: 'flex' }}
-              aria-label="Open menu"
+              style={{
+                position: 'relative',
+                background: 'none',
+                border: 'none',
+                color: '#FAF7F2',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              aria-label={
+                requestedOrdersCount > 0
+                  ? `Open menu (${requestedOrdersCount} new online orders)`
+                  : 'Open menu'
+              }
             >
               <IconMenu />
+              {requestedOrdersCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  style={{
+                    position: 'absolute',
+                    top: -3,
+                    right: -5,
+                    background: '#6B7259',
+                    color: '#FAF7F2',
+                    fontSize: 9,
+                    fontWeight: 700,
+                    lineHeight: '14px',
+                    minWidth: 16,
+                    height: 16,
+                    padding: '0 4px',
+                    borderRadius: 999,
+                    textAlign: 'center',
+                    border: '1.5px solid #4A3728',
+                    pointerEvents: 'none',
+                  }}
+                >
+                  {requestedOrdersCount > 99 ? '99+' : requestedOrdersCount}
+                </span>
+              )}
             </button>
             <span
               style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 600, color: '#FAF7F2', letterSpacing: '0.04em' }}
@@ -1508,9 +1649,27 @@ function AdminDashboardInner() {
                         color: deliveriesTab === 'orders' ? '#2B2420' : '#6B7259',
                         cursor: 'pointer',
                         transition: 'all 0.15s ease',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
                       }}
                     >
-                      Delivery Orders
+                      <span>Delivery Orders</span>
+                      {requestedOrdersCount > 0 && (
+                        <span
+                          title={`${requestedOrdersCount} new online orders`}
+                          style={{
+                            background: '#6B7259',
+                            color: '#FAF7F2',
+                            fontSize: 10,
+                            padding: '1px 6px',
+                            borderRadius: 10,
+                            fontWeight: 700,
+                          }}
+                        >
+                          {requestedOrdersCount > 99 ? '99+' : requestedOrdersCount}
+                        </span>
+                      )}
                     </button>
                     <button
                       type="button"
@@ -1576,7 +1735,7 @@ function AdminDashboardInner() {
 
                   <div style={{ padding: 28 }}>
                     {deliveriesTab === 'orders' ? (
-                      <DeliveryOrdersList />
+                      <DeliveryOrdersList onOrdersChanged={fetchRequestedOrdersCount} />
                     ) : (
                       <DeliveryEnquiriesList />
                     )}

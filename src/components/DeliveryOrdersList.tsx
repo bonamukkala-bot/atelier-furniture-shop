@@ -75,7 +75,11 @@ const DELIVERY_STATUS_CONFIG: Record<
   },
 }
 
-export default function DeliveryOrdersList() {
+interface DeliveryOrdersListProps {
+  onOrdersChanged?: () => void
+}
+
+export default function DeliveryOrdersList({ onOrdersChanged }: DeliveryOrdersListProps = {}) {
   const { showToast } = useToast()
 
   const [orders, setOrders] = useState<OrderWithDetails[]>([])
@@ -328,6 +332,7 @@ export default function DeliveryOrdersList() {
 
       showToast('Order confirmed and stock allocated.', 'success')
       await fetchDeliveryOrders()
+      onOrdersChanged?.()
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to confirm order.', 'error')
     } finally {
@@ -373,6 +378,7 @@ export default function DeliveryOrdersList() {
 
       showToast('Order request cancelled.', 'success')
       await fetchDeliveryOrders()
+      onOrdersChanged?.()
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to cancel order.', 'error')
     } finally {
