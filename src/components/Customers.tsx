@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import { useToast } from '../context/ToastContext'
 
@@ -12,6 +12,7 @@ interface Customer {
 interface CustomerWithStats extends Customer {
   totalOrders: number
   totalSpent: number
+  rawOrdersCount: number
 }
 
 interface Order {
@@ -33,6 +34,9 @@ function Customers() {
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerWithStats | null>(null)
   const [customerOrders, setCustomerOrders] = useState<Order[]>([])
   const [panelOpen, setPanelOpen] = useState(false)
+  const [customerToDelete, setCustomerToDelete] = useState<CustomerWithStats | null>(null)
+  const [deleting, setDeleting] = useState(false)
+  const deleteLockRef = useRef(false)
 
   useEffect(() => {
     fetchCustomers()
@@ -58,9 +62,11 @@ function Customers() {
 
       // Calculate stats for each customer
       const customersWithStats = (customersData ?? []).map((customer: Customer) => {
-        const customerOrders = (ordersData ?? []).filter(
+        const allCustomerOrders = (ordersData ?? []).filter(
+          (order) => order.customer_id === customer.id
+        )
+        const customerOrders = allCustomerOrders.filter(
           (order) =>
-            order.customer_id === customer.id &&
             order.delivery_status !== 'cancelled' &&
             order.delivery_status !== 'requested'
         )
@@ -71,6 +77,7 @@ function Customers() {
           ...customer,
           totalOrders,
           totalSpent,
+          rawOrdersCount: allCustomerOrders.length,
         }
       })
 
@@ -123,6 +130,57 @@ function Customers() {
     setPanelOpen(false)
     setSelectedCustomer(null)
     setCustomerOrders([])
+  }
+
+  async function handleConfirmDelete() {
+    if (!customerToDelete || deleteLockRef.current || deleting) return
+    deleteLockRef.current = true
+    setDeleting(true)
+
+    try {
+      const targetId = customerToDelete.id
+      const { data, error } = await supabase.rpc('admin_delete_customer', {
+        p_customer_id: targetId,
+      })
+
+      if (error) {
+        showToast('Could not delete this customer. Please try again.', 'error')
+        return
+      }
+
+      const result = (data ?? null) as { ok?: boolean; code?: string; message?: string } | null
+      if (result?.ok === true) {
+        setCustomerToDelete(null)
+        if (selectedCustomer?.id === targetId) {
+          closePanel()
+        }
+        showToast('Customer deleted', 'success')
+        await fetchCustomers()
+        return
+      }
+
+      switch (result?.code) {
+        case 'not_admin':
+          showToast('You do not have permission to delete customers.', 'error')
+          break
+        case 'has_orders':
+          showToast('This customer has orders and cannot be deleted.', 'error')
+          await fetchCustomers()
+          break
+        case 'not_found':
+          showToast('Customer not found. It may already be deleted.', 'error')
+          await fetchCustomers()
+          break
+        default:
+          showToast('Could not delete this customer. Please try again.', 'error')
+          break
+      }
+    } catch {
+      showToast('Could not delete this customer. Please try again.', 'error')
+    } finally {
+      deleteLockRef.current = false
+      setDeleting(false)
+    }
   }
 
   const displayedCustomers = useMemo(() => {
@@ -252,6 +310,9 @@ function Customers() {
                   <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6B7259' }}>
                     Total Spent
                   </th>
+                  <th style={{ padding: '12px 16px', textAlign: 'right', fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6B7259' }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -274,6 +335,20 @@ function Customers() {
                     </td>
                     <td style={{ padding: '12px 16px', fontSize: '13px', color: '#2B2420', textAlign: 'right', fontWeight: 500 }}>
                       ₹{customer.totalSpent.toLocaleString('en-IN')}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                      {customer.rawOrdersCount === 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setCustomerToDelete(customer)
+                          }}
+                          className="px-2.5 py-1 text-xs font-medium text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA] rounded-sm hover:bg-[#FEE2E2] transition-colors cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -478,6 +553,93 @@ function Customers() {
                   </div>
                 )}
               </div>
+
+              {/* Delete customer */}
+              <div style={{ marginTop: 28, paddingTop: 20, borderTop: '1px solid #E4DDD1' }}>
+                <div style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: '#6B7259', marginBottom: 12, fontFamily: 'Inter, sans-serif' }}>
+                  Delete customer
+                </div>
+                {selectedCustomer.rawOrdersCount === 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setCustomerToDelete(selectedCustomer)}
+                    className="w-full px-4 py-2.5 text-sm font-medium text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA] rounded-sm hover:bg-[#FEE2E2] transition-colors cursor-pointer"
+                  >
+                    Delete
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full px-4 py-2.5 text-sm font-medium text-[#6B7259] bg-[#FAF7F2] border border-[#E4DDD1] rounded-sm opacity-70 cursor-not-allowed"
+                  >
+                    Has orders, cannot delete
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Modal */}
+      {customerToDelete && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(43,36,32,0.55)',
+            zIndex: 60,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16,
+          }}
+          onClick={() => {
+            if (!deleting) setCustomerToDelete(null)
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-customer-title"
+            className="w-full max-w-sm bg-white border border-[#E4DDD1] rounded-sm shadow-xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3
+              id="delete-customer-title"
+              style={{ fontFamily: 'Fraunces, serif', fontSize: 18, fontWeight: 400, color: '#2B2420', margin: '0 0 8px' }}
+            >
+              Delete customer
+            </h3>
+            <p className="text-sm font-medium text-[#2B2420] mb-1 break-words">
+              {customerToDelete.name}
+            </p>
+            <p className="text-xs text-[#6B7259] mb-3">
+              {customerToDelete.phone}
+            </p>
+            <p className="text-sm text-[#6B7259] mb-5">
+              This permanently removes this customer record. It cannot be undone.
+            </p>
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={() => {
+                  if (!deleting) setCustomerToDelete(null)
+                }}
+                className="px-4 py-2 text-sm font-medium text-[#2B2420] bg-[#FAF7F2] border border-[#E4DDD1] rounded-sm hover:border-[#B8874B] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 text-sm font-medium text-white bg-[#991B1B] border border-[#991B1B] rounded-sm hover:bg-[#7F1D1D] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {deleting ? 'Deleting...' : 'Yes, delete'}
+              </button>
             </div>
           </div>
         </div>
