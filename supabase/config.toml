@@ -15,3 +15,9 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/chat-bot-health/deno.json"
 entrypoint = "./functions/chat-bot-health/index.ts"
+
+
+[functions.voice-order-status]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/voice-order-status/index.ts"
