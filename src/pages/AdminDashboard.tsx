@@ -423,6 +423,12 @@ function AdminDashboardInner() {
     }
   }, [fetchRequestedOrdersCount])
 
+  function handleOrdersChanged() {
+    void fetchRequestedOrdersCount()
+    void fetchStats()
+    void fetchReviewRequestsData()
+  }
+
   useEffect(() => {
     fetchStats()
     fetchReviewRequestsData()
@@ -1615,7 +1621,7 @@ function AdminDashboardInner() {
                     </span>
                   </div>
                   <div style={{ padding: 28 }}>
-                    <OrderList refreshKey={orderRefreshKey} />
+                    <OrderList refreshKey={orderRefreshKey} onOrdersChanged={handleOrdersChanged} />
                   </div>
                 </div>
               </div>
@@ -1735,7 +1741,7 @@ function AdminDashboardInner() {
 
                   <div style={{ padding: 28 }}>
                     {deliveriesTab === 'orders' ? (
-                      <DeliveryOrdersList onOrdersChanged={fetchRequestedOrdersCount} />
+                      <DeliveryOrdersList onOrdersChanged={handleOrdersChanged} />
                     ) : (
                       <DeliveryEnquiriesList />
                     )}

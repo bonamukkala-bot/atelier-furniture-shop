@@ -5,6 +5,7 @@ import type { OrderWithDetails, DeliveryStatusHistory, DeliveryPartner } from '.
 import { adminListDeliveryPartners } from '../lib/partnerAuth'
 import DeliveryConfirmationModal from './DeliveryConfirmationModal'
 import DeliveryPartnerManagerModal from './DeliveryPartnerManagerModal'
+import DeleteOrderModal, { type DeleteOrderSummary } from './DeleteOrderModal'
 
 const DELIVERY_STATUS_CONFIG: Record<
   string,
@@ -109,6 +110,7 @@ export default function DeliveryOrdersList({ onOrdersChanged }: DeliveryOrdersLi
   // ── Delivery Confirmation Modal State ──
   const [confirmModalOrder, setConfirmModalOrder] = useState<OrderWithDetails | null>(null)
   const [actionBusyOrderId, setActionBusyOrderId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DeleteOrderSummary | null>(null)
 
   useEffect(() => {
     fetchDeliveryOrders()
@@ -923,6 +925,24 @@ export default function DeliveryOrdersList({ onOrdersChanged }: DeliveryOrdersLi
                           </svg>
                           WhatsApp
                         </button>
+
+                        {order.delivery_status !== 'out_for_delivery' && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setDeleteTarget({
+                                id: order.id,
+                                productName,
+                                date: formatDate(order.created_at),
+                                total: order.total,
+                                statusLabel: statusCfg.label,
+                              })
+                            }
+                            className="px-2.5 py-1 text-xs font-medium text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA] rounded-sm hover:bg-[#FEE2E2] transition-colors cursor-pointer"
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1455,6 +1475,16 @@ export default function DeliveryOrdersList({ onOrdersChanged }: DeliveryOrdersLi
         isOpen={partnerModalOpen}
         onClose={() => setPartnerModalOpen(false)}
         onPartnersUpdated={loadRegisteredPartners}
+      />
+
+      {/* ════════ DELETE ORDER MODAL ════════ */}
+      <DeleteOrderModal
+        order={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={async () => {
+          await fetchDeliveryOrders()
+          onOrdersChanged?.()
+        }}
       />
     </div>
   )

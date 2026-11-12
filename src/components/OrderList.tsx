@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import type { OrderWithDetails } from '../lib/types'
+import DeleteOrderModal, { type DeleteOrderSummary } from './DeleteOrderModal'
 
 interface OrderListProps {
   refreshKey: number
+  onOrdersChanged?: () => void
 }
 
 function getOrderStatusLabel(order: { fulfillment_type?: string | null; delivery_status?: string | null }): string {
@@ -28,10 +30,11 @@ function getOrderStatusLabel(order: { fulfillment_type?: string | null; delivery
   }
 }
 
-function OrderList({ refreshKey }: OrderListProps) {
+function OrderList({ refreshKey, onOrdersChanged }: OrderListProps) {
   const [orders, setOrders] = useState<OrderWithDetails[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<DeleteOrderSummary | null>(null)
 
   // ── Search state (new — client-side only, no DB queries) ──
   const [searchQuery, setSearchQuery] = useState('')
@@ -317,12 +320,12 @@ function OrderList({ refreshKey }: OrderListProps) {
                   borderBottom: '1px solid #E4DDD1',
                 }}
               >
-                {['Customer', 'Product', 'Quantity', 'Date of Purchase', 'Total', 'Status', 'Review Requested'].map((h) => (
+                {['Customer', 'Product', 'Quantity', 'Date of Purchase', 'Total', 'Status', 'Review Requested', 'Actions'].map((h) => (
                   <th
                     key={h}
                     style={{
                       padding: '11px 14px',
-                      textAlign: 'left',
+                      textAlign: h === 'Actions' ? 'right' : 'left',
                       fontSize: 10,
                       fontWeight: 700,
                       letterSpacing: '0.1em',
@@ -405,12 +408,40 @@ function OrderList({ refreshKey }: OrderListProps) {
                       </span>
                     )}
                   </td>
+                  <td style={{ padding: '12px 14px', textAlign: 'right' }}>
+                    {order.delivery_status !== 'out_for_delivery' && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setDeleteTarget({
+                            id: order.id,
+                            productName: order.product_name,
+                            date: order.order_date ?? '—',
+                            total: order.total,
+                            statusLabel: getOrderStatusLabel(order),
+                          })
+                        }
+                        className="px-2.5 py-1 text-xs font-medium text-[#991B1B] bg-[#FEF2F2] border border-[#FECACA] rounded-sm hover:bg-[#FEE2E2] transition-colors cursor-pointer"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
+
+      <DeleteOrderModal
+        order={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={async () => {
+          await fetchOrders()
+          onOrdersChanged?.()
+        }}
+      />
     </div>
   )
 }
