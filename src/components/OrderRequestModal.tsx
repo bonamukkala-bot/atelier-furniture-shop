@@ -156,6 +156,11 @@ export default function OrderRequestModal({
   const [submitErrorCode, setSubmitErrorCode] = useState<string | null>(null)
   const [orderSuccess, setOrderSuccess] = useState<CreateOrderResponse | null>(null)
 
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const editLockRef = useRef(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
   // Lock page scroll while open
   useEffect(() => {
     const previousOverflow = document.body.style.overflow
@@ -168,7 +173,7 @@ export default function OrderRequestModal({
   // Escape closes dialog when not submitting
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !submitting) {
+      if (event.key === 'Escape' && !submitting && !savingEdit) {
         onClose()
       }
     }
@@ -176,7 +181,7 @@ export default function OrderRequestModal({
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [submitting, onClose])
+  }, [submitting, savingEdit, onClose])
 
   // Load saved addresses
   useEffect(() => {
@@ -233,19 +238,146 @@ export default function OrderRequestModal({
     }
   }, [user.id, t])
 
+  const fillFormFromAddress = (addr: SavedCustomerAddress) => {
+    const lbl = addr.label === 'Work' || addr.label === 'Other' ? addr.label : 'Home'
+    setAddressLabel(lbl)
+    setRecipientName(addr.recipient_name || '')
+    setPhone(addr.phone || '')
+    setHouseNo(addr.house_no || '')
+    setStreetArea(addr.street_area || '')
+    setLandmark(addr.landmark || '')
+    setPincode(addr.pincode || '')
+  }
+
+  const resetNewAddressForm = () => {
+    setAddressLabel('Home')
+    setRecipientName(defaultName)
+    setPhone('')
+    setHouseNo('')
+    setStreetArea('')
+    setLandmark('')
+    setPincode(initialPin)
+  }
+
   const handleSelectSavedAddress = (addressId: string) => {
+    if (savingEdit) return
     setSelectedAddressId(addressId)
     setUseNewAddress(false)
+    setEditingAddressId(null)
+    setEditError(null)
     setFieldErrors({})
     setSubmitError(null)
     setSubmitErrorCode(null)
   }
 
   const handleOpenNewAddressForm = () => {
+    if (savingEdit) return
+    if (editingAddressId) {
+      setEditingAddressId(null)
+      setEditError(null)
+      resetNewAddressForm()
+    }
     setUseNewAddress(true)
     setSelectedAddressId(null)
+    setFieldErrors({})
     setSubmitError(null)
     setSubmitErrorCode(null)
+  }
+
+  const handleStartEdit = (addr: SavedCustomerAddress) => {
+    if (submitting || savingEdit) return
+    fillFormFromAddress(addr)
+    setEditingAddressId(addr.id)
+    setEditError(null)
+    setFieldErrors({})
+    setSubmitError(null)
+    setSubmitErrorCode(null)
+  }
+
+  const handleCancelEdit = () => {
+    if (savingEdit) return
+    const saved = addresses.find((a) => a.id === editingAddressId)
+    if (saved) {
+      fillFormFromAddress(saved)
+    }
+    setEditingAddressId(null)
+    setEditError(null)
+    setFieldErrors({})
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingAddressId || editLockRef.current || savingEdit) return
+    const validated = validateNewAddressForm()
+    if (!validated) return
+
+    editLockRef.current = true
+    setSavingEdit(true)
+    setEditError(null)
+
+    try {
+      const {
+        trimmedName,
+        cleanedPhone,
+        trimmedHouse,
+        trimmedStreet,
+        trimmedLandmark,
+        trimmedPincode,
+      } = validated
+
+      const existingAddr = addresses.find((a) => a.id === editingAddressId)
+      const existingPincode = existingAddr?.pincode?.trim() || ''
+
+      let latToSave: number | null
+      let lngToSave: number | null
+      if (trimmedPincode === existingPincode) {
+        latToSave = existingAddr?.latitude ?? null
+        lngToSave = existingAddr?.longitude ?? null
+      } else {
+        const initialLocationPin = initialLocation?.pincode?.trim() || ''
+        const coordsMatchPincode =
+          Boolean(initialLocationPin) &&
+          initialLocationPin === trimmedPincode &&
+          initialLocation?.latitude != null &&
+          initialLocation?.longitude != null
+        latToSave = coordsMatchPincode ? initialLocation!.latitude : null
+        lngToSave = coordsMatchPincode ? initialLocation!.longitude : null
+      }
+
+      const { data: updatedAddr, error: updateErr } = await supabase
+        .from('customer_addresses')
+        .update({
+          label: addressLabel,
+          recipient_name: trimmedName,
+          phone: cleanedPhone,
+          house_no: trimmedHouse,
+          street_area: trimmedStreet,
+          landmark: trimmedLandmark || null,
+          pincode: trimmedPincode,
+          latitude: latToSave,
+          longitude: lngToSave,
+        })
+        .eq('id', editingAddressId)
+        .eq('user_id', user.id)
+        .select()
+        .single()
+
+      if (updateErr || !updatedAddr) {
+        setEditError(t('orderModal.validation.updateAddressFailed'))
+        return
+      }
+
+      const saved = updatedAddr as SavedCustomerAddress
+      setAddresses((prev) => prev.map((a) => (a.id === saved.id ? saved : a)))
+      setSelectedAddressId(saved.id)
+      setEditingAddressId(null)
+      setEditError(null)
+      setFieldErrors({})
+    } catch {
+      setEditError(t('orderModal.validation.updateAddressFailed'))
+    } finally {
+      editLockRef.current = false
+      setSavingEdit(false)
+    }
   }
 
   const validateNewAddressForm = () => {
@@ -380,9 +512,12 @@ export default function OrderRequestModal({
     return newAddr.id
   }
 
+  const isEditingAddress =
+    Boolean(editingAddressId) && !useNewAddress && addresses.length > 0
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (submitLockRef.current || submitting || addressesLoading) return
+    if (submitLockRef.current || submitting || addressesLoading || isEditingAddress || savingEdit) return
 
     submitLockRef.current = true
     setSubmitting(true)
@@ -433,6 +568,177 @@ export default function OrderRequestModal({
   const itemSubtotal = product.price * quantity
   const showWhatsAppButton = Boolean(submitErrorCode && WHATSAPP_FALLBACK_CODES.has(submitErrorCode))
   const trackingToken = orderSuccess?.tracking_token?.trim() || ''
+
+  const renderAddressFields = (idPrefix: string, fieldsDisabled: boolean) => (
+    <>
+      {/* Label pills */}
+      <div>
+        <label className="block text-xs font-inter font-medium text-[#4A3728] mb-1.5">
+          {t('orderModal.labelField')}
+        </label>
+        <div className="flex flex-wrap gap-2">
+          {(['Home', 'Work', 'Other'] as const).map((lbl) => (
+            <button
+              key={lbl}
+              type="button"
+              onClick={() => setAddressLabel(lbl)}
+              disabled={fieldsDisabled}
+              className={`px-3 py-1.5 text-xs font-inter font-medium border transition-colors cursor-pointer min-h-[36px] ${
+                addressLabel === lbl
+                  ? 'border-[#4A3728] bg-[#4A3728] text-[#FAF7F2]'
+                  : 'border-[#E4DDD1] bg-[#FAF7F2] text-[#4A3728] hover:border-[#B8874B]'
+              }`}
+            >
+              {t(`orderModal.labels.${lbl}`)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Recipient Name */}
+      <div>
+        <label
+          htmlFor={`${idPrefix}-recipient-name`}
+          className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
+        >
+          {t('orderModal.recipientNameLabel')} *
+        </label>
+        <input
+          id={`${idPrefix}-recipient-name`}
+          type="text"
+          value={recipientName}
+          onChange={(e) => setRecipientName(e.target.value)}
+          placeholder={t('orderModal.recipientNamePlaceholder')}
+          disabled={fieldsDisabled}
+          className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
+        />
+        {fieldErrors.recipientName && (
+          <p className="mt-1 text-xs font-inter text-red-700">
+            {fieldErrors.recipientName}
+          </p>
+        )}
+      </div>
+
+      {/* Phone */}
+      <div>
+        <label
+          htmlFor={`${idPrefix}-phone`}
+          className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
+        >
+          {t('orderModal.phoneLabel')} *
+        </label>
+        <input
+          id={`${idPrefix}-phone`}
+          type="tel"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder={t('orderModal.phonePlaceholder')}
+          disabled={fieldsDisabled}
+          className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
+        />
+        {fieldErrors.phone && (
+          <p className="mt-1 text-xs font-inter text-red-700">
+            {fieldErrors.phone}
+          </p>
+        )}
+      </div>
+
+      {/* House / Flat */}
+      <div>
+        <label
+          htmlFor={`${idPrefix}-house-no`}
+          className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
+        >
+          {t('orderModal.houseNoLabel')} *
+        </label>
+        <input
+          id={`${idPrefix}-house-no`}
+          type="text"
+          value={houseNo}
+          onChange={(e) => setHouseNo(e.target.value)}
+          placeholder={t('orderModal.houseNoPlaceholder')}
+          disabled={fieldsDisabled}
+          className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
+        />
+        {fieldErrors.houseNo && (
+          <p className="mt-1 text-xs font-inter text-red-700">
+            {fieldErrors.houseNo}
+          </p>
+        )}
+      </div>
+
+      {/* Street / Area */}
+      <div>
+        <label
+          htmlFor={`${idPrefix}-street-area`}
+          className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
+        >
+          {t('orderModal.streetAreaLabel')} *
+        </label>
+        <input
+          id={`${idPrefix}-street-area`}
+          type="text"
+          value={streetArea}
+          onChange={(e) => setStreetArea(e.target.value)}
+          placeholder={t('orderModal.streetAreaPlaceholder')}
+          disabled={fieldsDisabled}
+          className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
+        />
+        {fieldErrors.streetArea && (
+          <p className="mt-1 text-xs font-inter text-red-700">
+            {fieldErrors.streetArea}
+          </p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+        {/* Landmark */}
+        <div>
+          <label
+            htmlFor={`${idPrefix}-landmark`}
+            className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
+          >
+            {t('orderModal.landmarkLabel')}
+          </label>
+          <input
+            id={`${idPrefix}-landmark`}
+            type="text"
+            value={landmark}
+            onChange={(e) => setLandmark(e.target.value)}
+            placeholder={t('orderModal.landmarkPlaceholder')}
+            disabled={fieldsDisabled}
+            className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
+          />
+        </div>
+
+        {/* Pincode */}
+        <div>
+          <label
+            htmlFor={`${idPrefix}-pincode`}
+            className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
+          >
+            {t('orderModal.pincodeLabel')} *
+          </label>
+          <input
+            id={`${idPrefix}-pincode`}
+            type="text"
+            inputMode="numeric"
+            maxLength={6}
+            value={pincode}
+            onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            placeholder={t('orderModal.pincodePlaceholder')}
+            disabled={fieldsDisabled}
+            className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
+          />
+          {fieldErrors.pincode && (
+            <p className="mt-1 text-xs font-inter text-red-700">
+              {fieldErrors.pincode}
+            </p>
+          )}
+        </div>
+      </div>
+    </>
+  )
 
   return (
     <div
@@ -683,52 +989,116 @@ export default function OrderRequestModal({
                       <div className="space-y-2.5">
                         {addresses.map((addr) => {
                           const isSelected = !useNewAddress && selectedAddressId === addr.id
+                          const isBeingEdited = isSelected && editingAddressId === addr.id
                           return (
-                            <button
-                              key={addr.id}
-                              type="button"
-                              onClick={() => handleSelectSavedAddress(addr.id)}
-                              disabled={submitting}
-                              className={`w-full text-left p-3.5 border transition-colors cursor-pointer ${
-                                isSelected
-                                  ? 'border-[#B8874B] bg-white ring-1 ring-[#B8874B]'
-                                  : 'border-[#E4DDD1] bg-white/80 hover:border-[#B8874B]/60'
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2 mb-1">
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span className="text-[10px] font-inter font-semibold uppercase tracking-wider px-1.5 py-0.5 bg-[#FAF7F2] border border-[#E4DDD1] text-[#4A3728]">
-                                    {addr.label || 'Home'}
-                                  </span>
-                                  {addr.is_default && (
-                                    <span className="text-[10px] font-inter font-medium text-[#6B7259]">
-                                      {t('orderModal.defaultBadge')}
+                            <div key={addr.id} className="space-y-2">
+                              <div
+                                role="button"
+                                tabIndex={submitting || savingEdit ? -1 : 0}
+                                onClick={() => {
+                                  if (!submitting && !savingEdit) {
+                                    handleSelectSavedAddress(addr.id)
+                                  }
+                                }}
+                                onKeyDown={(e) => {
+                                  if (
+                                    (e.key === 'Enter' || e.key === ' ') &&
+                                    !submitting &&
+                                    !savingEdit
+                                  ) {
+                                    e.preventDefault()
+                                    handleSelectSavedAddress(addr.id)
+                                  }
+                                }}
+                                aria-pressed={isSelected}
+                                className={`w-full text-left p-3.5 border transition-colors cursor-pointer ${
+                                  isSelected
+                                    ? 'border-[#B8874B] bg-white ring-1 ring-[#B8874B]'
+                                    : 'border-[#E4DDD1] bg-white/80 hover:border-[#B8874B]/60'
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-[10px] font-inter font-semibold uppercase tracking-wider px-1.5 py-0.5 bg-[#FAF7F2] border border-[#E4DDD1] text-[#4A3728]">
+                                      {addr.label || 'Home'}
                                     </span>
-                                  )}
+                                    {addr.is_default && (
+                                      <span className="text-[10px] font-inter font-medium text-[#6B7259]">
+                                        {t('orderModal.defaultBadge')}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2.5 shrink-0">
+                                    {isSelected && !isBeingEdited && (
+                                      <button
+                                        type="button"
+                                        disabled={submitting || savingEdit}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleStartEdit(addr)
+                                        }}
+                                        className="text-xs font-inter font-medium text-[#B8874B] underline hover:text-[#4A3728] cursor-pointer disabled:opacity-50"
+                                      >
+                                        {t('orderModal.editAddress')}
+                                      </button>
+                                    )}
+                                    <span
+                                      className={`w-4 h-4 rounded-full border shrink-0 flex items-center justify-center ${
+                                        isSelected
+                                          ? 'border-[#B8874B] bg-[#B8874B]'
+                                          : 'border-[#D2C9BA] bg-white'
+                                      }`}
+                                      aria-hidden="true"
+                                    >
+                                      {isSelected && (
+                                        <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                                      )}
+                                    </span>
+                                  </div>
                                 </div>
-                                <span
-                                  className={`w-4 h-4 rounded-full border shrink-0 flex items-center justify-center ${
-                                    isSelected
-                                      ? 'border-[#B8874B] bg-[#B8874B]'
-                                      : 'border-[#D2C9BA] bg-white'
-                                  }`}
-                                  aria-hidden="true"
-                                >
-                                  {isSelected && (
-                                    <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                                  )}
-                                </span>
+                                <p className="text-sm font-inter font-semibold text-[#2B2420] break-words">
+                                  {addr.recipient_name}
+                                </p>
+                                <p className="text-xs font-inter text-[#4A3728] break-words mt-0.5">
+                                  {addr.house_no}, {addr.street_area}
+                                </p>
+                                <p className="text-xs font-inter text-[#6B7259] mt-0.5">
+                                  {addr.pincode}
+                                </p>
                               </div>
-                              <p className="text-sm font-inter font-semibold text-[#2B2420] break-words">
-                                {addr.recipient_name}
-                              </p>
-                              <p className="text-xs font-inter text-[#4A3728] break-words mt-0.5">
-                                {addr.house_no}, {addr.street_area}
-                              </p>
-                              <p className="text-xs font-inter text-[#6B7259] mt-0.5">
-                                {addr.pincode}
-                              </p>
-                            </button>
+
+                              {isBeingEdited && (
+                                <div className="bg-white border border-[#B8874B] p-4 space-y-3.5">
+                                  <p className="text-xs font-inter font-semibold uppercase tracking-wider text-[#6B7259]">
+                                    {t('orderModal.editAddressTitle')}
+                                  </p>
+                                  {renderAddressFields('edit', submitting || savingEdit)}
+                                  {editError && (
+                                    <p className="text-xs font-inter text-red-800 bg-red-50 border border-red-200 px-3 py-2 break-words">
+                                      {editError}
+                                    </p>
+                                  )}
+                                  <div className="flex items-center justify-end gap-2.5 pt-1">
+                                    <button
+                                      type="button"
+                                      disabled={savingEdit}
+                                      onClick={handleCancelEdit}
+                                      className="px-4 py-2 text-xs font-inter font-semibold uppercase tracking-wider border border-[#E4DDD1] bg-[#FAF7F2] text-[#4A3728] hover:border-[#B8874B] disabled:opacity-50 cursor-pointer min-h-[38px]"
+                                    >
+                                      {t('orderModal.cancelEdit')}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={savingEdit}
+                                      onClick={handleSaveEdit}
+                                      className="px-4 py-2 text-xs font-inter font-semibold uppercase tracking-wider bg-[#4A3728] text-[#FAF7F2] hover:bg-[#B8874B] disabled:opacity-50 cursor-pointer min-h-[38px]"
+                                    >
+                                      {savingEdit ? t('orderModal.savingAddress') : t('orderModal.saveAddress')}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           )
                         })}
 
@@ -751,172 +1121,7 @@ export default function OrderRequestModal({
 
                     {(useNewAddress || addresses.length === 0) && (
                       <div className="bg-white border border-[#E4DDD1] p-4 space-y-3.5">
-                        {/* Label pills */}
-                        <div>
-                          <label className="block text-xs font-inter font-medium text-[#4A3728] mb-1.5">
-                            {t('orderModal.labelField')}
-                          </label>
-                          <div className="flex flex-wrap gap-2">
-                            {(['Home', 'Work', 'Other'] as const).map((lbl) => (
-                              <button
-                                key={lbl}
-                                type="button"
-                                onClick={() => setAddressLabel(lbl)}
-                                disabled={submitting}
-                                className={`px-3 py-1.5 text-xs font-inter font-medium border transition-colors cursor-pointer min-h-[36px] ${
-                                  addressLabel === lbl
-                                    ? 'border-[#4A3728] bg-[#4A3728] text-[#FAF7F2]'
-                                    : 'border-[#E4DDD1] bg-[#FAF7F2] text-[#4A3728] hover:border-[#B8874B]'
-                                }`}
-                              >
-                                {t(`orderModal.labels.${lbl}`)}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Recipient Name */}
-                        <div>
-                          <label
-                            htmlFor="order-recipient-name"
-                            className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
-                          >
-                            {t('orderModal.recipientNameLabel')} *
-                          </label>
-                          <input
-                            id="order-recipient-name"
-                            type="text"
-                            value={recipientName}
-                            onChange={(e) => setRecipientName(e.target.value)}
-                            placeholder={t('orderModal.recipientNamePlaceholder')}
-                            disabled={submitting}
-                            className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
-                          />
-                          {fieldErrors.recipientName && (
-                            <p className="mt-1 text-xs font-inter text-red-700">
-                              {fieldErrors.recipientName}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Phone */}
-                        <div>
-                          <label
-                            htmlFor="order-phone"
-                            className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
-                          >
-                            {t('orderModal.phoneLabel')} *
-                          </label>
-                          <input
-                            id="order-phone"
-                            type="tel"
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            placeholder={t('orderModal.phonePlaceholder')}
-                            disabled={submitting}
-                            className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
-                          />
-                          {fieldErrors.phone && (
-                            <p className="mt-1 text-xs font-inter text-red-700">
-                              {fieldErrors.phone}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* House / Flat */}
-                        <div>
-                          <label
-                            htmlFor="order-house-no"
-                            className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
-                          >
-                            {t('orderModal.houseNoLabel')} *
-                          </label>
-                          <input
-                            id="order-house-no"
-                            type="text"
-                            value={houseNo}
-                            onChange={(e) => setHouseNo(e.target.value)}
-                            placeholder={t('orderModal.houseNoPlaceholder')}
-                            disabled={submitting}
-                            className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
-                          />
-                          {fieldErrors.houseNo && (
-                            <p className="mt-1 text-xs font-inter text-red-700">
-                              {fieldErrors.houseNo}
-                            </p>
-                          )}
-                        </div>
-
-                        {/* Street / Area */}
-                        <div>
-                          <label
-                            htmlFor="order-street-area"
-                            className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
-                          >
-                            {t('orderModal.streetAreaLabel')} *
-                          </label>
-                          <input
-                            id="order-street-area"
-                            type="text"
-                            value={streetArea}
-                            onChange={(e) => setStreetArea(e.target.value)}
-                            placeholder={t('orderModal.streetAreaPlaceholder')}
-                            disabled={submitting}
-                            className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
-                          />
-                          {fieldErrors.streetArea && (
-                            <p className="mt-1 text-xs font-inter text-red-700">
-                              {fieldErrors.streetArea}
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                          {/* Landmark */}
-                          <div>
-                            <label
-                              htmlFor="order-landmark"
-                              className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
-                            >
-                              {t('orderModal.landmarkLabel')}
-                            </label>
-                            <input
-                              id="order-landmark"
-                              type="text"
-                              value={landmark}
-                              onChange={(e) => setLandmark(e.target.value)}
-                              placeholder={t('orderModal.landmarkPlaceholder')}
-                              disabled={submitting}
-                              className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
-                            />
-                          </div>
-
-                          {/* Pincode */}
-                          <div>
-                            <label
-                              htmlFor="order-pincode"
-                              className="block text-xs font-inter font-medium text-[#4A3728] mb-1"
-                            >
-                              {t('orderModal.pincodeLabel')} *
-                            </label>
-                            <input
-                              id="order-pincode"
-                              type="text"
-                              inputMode="numeric"
-                              maxLength={6}
-                              value={pincode}
-                              onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                              placeholder={t('orderModal.pincodePlaceholder')}
-                              disabled={submitting}
-                              className="w-full px-3 py-2.5 text-sm font-inter bg-[#FAF7F2] border border-[#E4DDD1] text-[#2B2420] focus:outline-none focus:border-[#B8874B]"
-                            />
-                            {fieldErrors.pincode && (
-                              <p className="mt-1 text-xs font-inter text-red-700">
-                                {fieldErrors.pincode}
-                              </p>
-                            )}
-                          </div>
-                        </div>
+                        {renderAddressFields('order', submitting)}
                       </div>
                     )}
                   </>
@@ -940,9 +1145,15 @@ export default function OrderRequestModal({
                 </div>
               )}
 
+              {isEditingAddress && (
+                <p className="text-xs font-inter text-[#6B6B60] text-center">
+                  {t('orderModal.finishEditingFirst')}
+                </p>
+              )}
+
               <button
                 type="submit"
-                disabled={submitting || addressesLoading}
+                disabled={submitting || addressesLoading || isEditingAddress || savingEdit}
                 className="w-full inline-flex items-center justify-center bg-[#4A3728] text-[#FAF7F2] hover:bg-[#B8874B] transition-colors px-6 py-3.5 text-xs font-inter font-semibold uppercase tracking-widest disabled:opacity-50 cursor-pointer min-h-[46px]"
               >
                 {submitting ? t('orderModal.placingOrder') : t('orderModal.placeOrder')}

@@ -186,6 +186,12 @@
     "useDifferentAddress": "Use a different address",
     "useSavedAddress": "Choose a saved address",
     "defaultBadge": "Default",
+    "editAddress": "Edit",
+    "editAddressTitle": "Edit delivery address",
+    "saveAddress": "Save address",
+    "savingAddress": "Saving...",
+    "cancelEdit": "Cancel",
+    "finishEditingFirst": "Save or cancel editing your address before placing the order.",
     "labelField": "Address label",
     "labels": {
       "Home": "Home",
@@ -212,7 +218,8 @@
       "pincodeInvalid": "Enter a valid 6-digit pincode.",
       "addressRequired": "Please select or enter a delivery address.",
       "maxAddressesReached": "You already have 10 saved addresses. Please pick one of your saved addresses.",
-      "saveAddressFailed": "Unable to save your delivery address. Please try again."
+      "saveAddressFailed": "Unable to save your delivery address. Please try again.",
+      "updateAddressFailed": "Unable to update your delivery address. Please try again."
     },
     "placeOrder": "Place order",
     "placingOrder": "Placing order...",

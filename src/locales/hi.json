@@ -136,6 +136,12 @@
     "useDifferentAddress": "दूसरा पता उपयोग करें",
     "useSavedAddress": "सहेजा गया पता चुनें",
     "defaultBadge": "डिफ़ॉल्ट",
+    "editAddress": "बदलें",
+    "editAddressTitle": "डिलीवरी पता बदलें",
+    "saveAddress": "पता सहेजें",
+    "savingAddress": "सहेजा जा रहा है...",
+    "cancelEdit": "रद्द करें",
+    "finishEditingFirst": "ऑर्डर देने से पहले पते का बदलाव सहेजें या रद्द करें।",
     "labelField": "पते का लेबल",
     "labels": {
       "Home": "घर",
@@ -162,7 +168,8 @@
       "pincodeInvalid": "कृपया 6 अंकों का वैध पिनकोड दर्ज करें।",
       "addressRequired": "कृपया डिलीवरी पता चुनें या दर्ज करें।",
       "maxAddressesReached": "आपके पास पहले से ही 10 सहेजे गए पते हैं। कृपया ऊपर दिए सहेजे गए पतों में से एक चुनें।",
-      "saveAddressFailed": "आपका डिलीवरी पता सहेजा नहीं जा सका। कृपया पुनः प्रयास करें।"
+      "saveAddressFailed": "आपका डिलीवरी पता सहेजा नहीं जा सका। कृपया पुनः प्रयास करें।",
+      "updateAddressFailed": "आपका डिलीवरी पता अपडेट नहीं हो सका। कृपया पुनः प्रयास करें।"
     },
     "placeOrder": "ऑर्डर दें",
     "placingOrder": "ऑर्डर दिया जा रहा है...",
