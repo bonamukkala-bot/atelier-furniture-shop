@@ -1,7 +1,14 @@
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "content-type, x-voice-secret, authorization",
+  "Access-Control-Max-Age": "86400",
+};
+
 function jsonResponse(body: Record<string, string>, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json" },
+    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
   });
 }
 
@@ -35,6 +42,10 @@ function extractProvidedSecret(req: Request): string | null {
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
   if (req.method !== "POST") {
     return jsonResponse({ error: "method_not_allowed" }, 405);
   }
@@ -77,11 +88,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const payload = parsed as Record<string, unknown>;
   const rawFromNumber = payload.from_number;
   if (typeof rawFromNumber !== "string") {
-    return jsonResponse({ error: "bad_request" }, 400);
+    return jsonResponse({ result: "no_caller_number" }, 200);
   }
   const fromNumber = rawFromNumber.trim();
   if (fromNumber.length === 0 || fromNumber.length > 30) {
-    return jsonResponse({ error: "bad_request" }, 400);
+    return jsonResponse({ result: "no_caller_number" }, 200);
   }
 
   const rawProductHint = payload.product_hint;
@@ -121,7 +132,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     JSON.parse(rpcBody);
     return new Response(rpcBody, {
       status: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
   } catch {
     console.error("voice_lookup_error", 0);
