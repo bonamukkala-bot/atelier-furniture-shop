@@ -75,22 +75,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const payload = parsed as Record<string, unknown>;
-  const rawCallerPhone = payload.caller_phone;
-  if (typeof rawCallerPhone !== "string" || rawCallerPhone.trim().length === 0 || rawCallerPhone.length > 30) {
+  const rawFromNumber = payload.from_number;
+  if (typeof rawFromNumber !== "string") {
+    return jsonResponse({ error: "bad_request" }, 400);
+  }
+  const fromNumber = rawFromNumber.trim();
+  if (fromNumber.length === 0 || fromNumber.length > 30) {
     return jsonResponse({ error: "bad_request" }, 400);
   }
 
   const rawProductHint = payload.product_hint;
   let productHint: string | null = null;
-  if (rawProductHint !== undefined && rawProductHint !== null) {
-    if (typeof rawProductHint !== "string") {
-      return jsonResponse({ error: "bad_request" }, 400);
-    }
+  if (typeof rawProductHint === "string") {
     const trimmedHint = rawProductHint.trim();
-    if (trimmedHint.length > 100) {
-      return jsonResponse({ error: "bad_request" }, 400);
+    if (trimmedHint.length > 0) {
+      productHint = trimmedHint.slice(0, 100);
     }
-    productHint = trimmedHint.length > 0 ? trimmedHint : null;
   }
 
   const controller = new AbortController();
@@ -106,7 +106,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        p_phone: rawCallerPhone,
+        p_phone: fromNumber,
         p_product_hint: productHint,
       }),
       signal: controller.signal,
@@ -130,4 +130,3 @@ Deno.serve(async (req: Request): Promise<Response> => {
     clearTimeout(timeoutId);
   }
 });
-
