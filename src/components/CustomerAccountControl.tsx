@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAuth } from '../lib/AuthContext'
 
@@ -167,6 +168,29 @@ export default function CustomerAccountControl() {
               </p>
             )}
           </div>
+
+          <Link
+            to="/my-orders"
+            role="menuitem"
+            onClick={() => setMenuOpen(false)}
+            className="w-full text-left px-3 py-2 text-xs font-inter font-medium text-[var(--ink)] hover:text-[var(--gold)] hover:bg-[var(--border)]/20 transition-colors flex items-center gap-2 cursor-pointer min-h-[40px]"
+          >
+            <svg
+              className="w-3.5 h-3.5 shrink-0"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.75 10.5V6a3.75 3.75 0 10-7.5 0v4.5m11.356-1.993l1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 01-1.12-1.243l1.264-12A1.125 1.125 0 015.513 7.5h12.974c.576 0 1.059.435 1.119 1.007z"
+              />
+            </svg>
+            <span>{t('account.myOrders')}</span>
+          </Link>
 
           <button
             type="button"

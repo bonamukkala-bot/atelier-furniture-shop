@@ -287,9 +287,9 @@ export default function OrderTrackingPage() {
     currentStepIndex = 4
   } else if (isOutForDelivery) {
     currentStepIndex = 3
-  } else if (isPartnerAccepted) {
+  } else if (isPartnerAccepted || Boolean(order.delivery_partner_name)) {
     currentStepIndex = 2
-  } else if (currentStatus === 'preparing' || order.delivery_partner_id || order.delivery_partner_name) {
+  } else if (currentStatus === 'preparing' || order.delivery_partner_id) {
     currentStepIndex = 1
   } else {
     currentStepIndex = 0

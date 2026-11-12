@@ -135,6 +135,39 @@
     "signInFailed": "Unable to sign in. Please try again.",
     "customer": "Customer",
     "openAccountMenu": "Open account menu",
-    "closeAccountMenu": "Close account menu"
+    "closeAccountMenu": "Close account menu",
+    "myOrders": "My Orders"
+  },
+  "myOrders": {
+    "title": "My Orders",
+    "subtitle": "View your bespoke furniture requests, confirmations, and delivery updates.",
+    "collection": "Collection",
+    "loading": "Loading your orders...",
+    "signInTitle": "Sign in to see your orders",
+    "signInDescription": "Sign in with your Google account to view your orders and track deliveries.",
+    "errorTitle": "Unable to load your orders",
+    "errorGeneric": "Something went wrong while fetching your orders. Please try again.",
+    "retry": "Retry",
+    "emptyTitle": "No orders yet",
+    "emptyDescription": "You haven't placed any orders with ATELIER yet. Explore our handcrafted pieces to get started.",
+    "browseCollection": "Browse Collection",
+    "quantityLabel": "Qty",
+    "orderedOn": "Ordered on",
+    "totalLabel": "Total",
+    "deliveryFeeLabel": "Delivery fee",
+    "zoneLabel": "Zone",
+    "deliveryAddressLabel": "Delivery address",
+    "trackOrder": "Track order",
+    "requestedNote": "The studio will confirm your order shortly",
+    "status": {
+      "requested": "Awaiting confirmation",
+      "confirmed": "Confirmed",
+      "preparing": "Preparing",
+      "out_for_delivery": "Out for delivery",
+      "delivered": "Delivered",
+      "issue": "Issue",
+      "cancelled": "Cancelled",
+      "pickup": "Pickup"
+    }
   }
 }

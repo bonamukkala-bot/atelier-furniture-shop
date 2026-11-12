@@ -4,6 +4,7 @@ import AdminDashboard from './pages/AdminDashboard'
 import StorefrontPage from './pages/StorefrontPage'
 import ProductDetailPage from './pages/ProductDetailPage'
 import OrderTrackingPage from './pages/OrderTrackingPage'
+import MyOrdersPage from './pages/MyOrdersPage'
 import PartnerLoginPage from './pages/PartnerLoginPage'
 import PartnerDashboardPage from './pages/PartnerDashboardPage'
 import ProtectedRoute from './components/ProtectedRoute'
@@ -18,6 +19,7 @@ function App() {
         <Route path="/" element={<StorefrontPage />} />
         <Route path="/product/:id" element={<ProductDetailPage />} />
         <Route path="/track/:tracking_token" element={<OrderTrackingPage />} />
+        <Route path="/my-orders" element={<MyOrdersPage />} />
         <Route path="/privacy" element={<PolicyPage type="privacy" />} />
         <Route path="/delivery-policy" element={<PolicyPage type="delivery" />} />
         <Route path="/returns-warranty" element={<PolicyPage type="returns-warranty" />} />

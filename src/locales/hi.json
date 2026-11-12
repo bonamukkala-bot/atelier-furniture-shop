@@ -85,6 +85,39 @@
     "signInFailed": "साइन इन करने में असमर्थ। कृपया पुनः प्रयास करें।",
     "customer": "ग्राहक",
     "openAccountMenu": "खाता मेनू खोलें",
-    "closeAccountMenu": "खाता मेनू बंद करें"
+    "closeAccountMenu": "खाता मेनू बंद करें",
+    "myOrders": "मेरे ऑर्डर"
+  },
+  "myOrders": {
+    "title": "मेरे ऑर्डर",
+    "subtitle": "अपने फर्नीचर अनुरोध, पुष्टि और डिलीवरी अपडेट देखें।",
+    "collection": "कलेक्शन",
+    "loading": "आपके ऑर्डर लोड हो रहे हैं...",
+    "signInTitle": "अपने ऑर्डर देखने के लिए साइन इन करें",
+    "signInDescription": "अपने ऑर्डर देखने और डिलीवरी ट्रैक करने के लिए अपने गूगल खाते से साइन इन करें।",
+    "errorTitle": "आपके ऑर्डर लोड करने में असमर्थ",
+    "errorGeneric": "आपके ऑर्डर प्राप्त करते समय कुछ गलत हो गया। कृपया पुनः प्रयास करें।",
+    "retry": "पुनः प्रयास करें",
+    "emptyTitle": "अभी तक कोई ऑर्डर नहीं",
+    "emptyDescription": "आपने अभी तक ATELIER से कोई ऑर्डर नहीं दिया है। शुरू करने के लिए हमारा कलेक्शन देखें।",
+    "browseCollection": "कलेक्शन देखें",
+    "quantityLabel": "मात्रा",
+    "orderedOn": "ऑर्डर की तारीख",
+    "totalLabel": "कुल राशि",
+    "deliveryFeeLabel": "डिलीवरी शुल्क",
+    "zoneLabel": "ज़ोन",
+    "deliveryAddressLabel": "डिलीवरी पता",
+    "trackOrder": "ऑर्डर ट्रैक करें",
+    "requestedNote": "स्टूडियो जल्द ही आपके ऑर्डर की पुष्टि करेगा",
+    "status": {
+      "requested": "पुष्टि की प्रतीक्षा में",
+      "confirmed": "पुष्ट",
+      "preparing": "तैयार किया जा रहा है",
+      "out_for_delivery": "डिलीवरी के लिए निकला",
+      "delivered": "डिलीवर हो गया",
+      "issue": "समस्या",
+      "cancelled": "रद्द किया गया",
+      "pickup": "पिकअप"
+    }
   }
 }
