@@ -22,7 +22,9 @@
     "dimensions": "Dimensions",
     "careInstructions": "Care Instructions",
     "enquireOnWhatsApp": "Enquire on WhatsApp",
-    "backToCurrentCollection": "Back to The Current Collection"
+    "backToCurrentCollection": "Back to The Current Collection",
+    "orderNow": "Order now",
+    "outOfStock": "Out of stock"
   },
   "visitUs": {
     "findUs": "Find Us",
@@ -168,6 +170,77 @@
       "issue": "Issue",
       "cancelled": "Cancelled",
       "pickup": "Pickup"
+    }
+  },
+  "orderModal": {
+    "eyebrow": "Order Request",
+    "close": "Close",
+    "quantityLabel": "Quantity",
+    "decreaseQuantity": "Decrease quantity",
+    "increaseQuantity": "Increase quantity",
+    "subtotalLabel": "Item subtotal",
+    "feeAndPaymentNote": "Delivery fee is added for your address. No payment is taken now.",
+    "deliveryAddressTitle": "Delivery Address",
+    "loadingAddresses": "Loading saved addresses...",
+    "loadAddressesFailed": "Unable to load your saved addresses right now. You can enter an address below.",
+    "useDifferentAddress": "Use a different address",
+    "useSavedAddress": "Choose a saved address",
+    "defaultBadge": "Default",
+    "labelField": "Address label",
+    "labels": {
+      "Home": "Home",
+      "Work": "Work",
+      "Other": "Other"
+    },
+    "recipientNameLabel": "Recipient name",
+    "recipientNamePlaceholder": "Full name",
+    "phoneLabel": "Mobile number",
+    "phonePlaceholder": "10-digit mobile number",
+    "houseNoLabel": "House / Flat No., Building",
+    "houseNoPlaceholder": "e.g. Flat 302, Sai Nilayam",
+    "streetAreaLabel": "Street / Area",
+    "streetAreaPlaceholder": "e.g. Road No. 12, Banjara Hills",
+    "landmarkLabel": "Landmark (optional)",
+    "landmarkPlaceholder": "Near park or junction",
+    "pincodeLabel": "Pincode",
+    "pincodePlaceholder": "6-digit pincode",
+    "validation": {
+      "nameRequired": "Please enter the recipient's full name.",
+      "phoneInvalid": "Enter a valid 10-digit mobile number.",
+      "houseMinLength": "Enter a valid House/Flat No., Building (minimum 4 characters).",
+      "streetMinLength": "Enter a valid Street / Area (minimum 4 characters).",
+      "pincodeInvalid": "Enter a valid 6-digit pincode.",
+      "addressRequired": "Please select or enter a delivery address.",
+      "maxAddressesReached": "You already have 10 saved addresses. Please pick one of your saved addresses.",
+      "saveAddressFailed": "Unable to save your delivery address. Please try again."
+    },
+    "placeOrder": "Place order",
+    "placingOrder": "Placing order...",
+    "whatsappFallback": "Message us on WhatsApp",
+    "errors": {
+      "not_signed_in": "Please sign in with Google to place your order.",
+      "invalid_quantity": "Please select a valid quantity.",
+      "delivery_off": "Online delivery orders are currently paused. Please message us on WhatsApp for assistance.",
+      "product_unavailable": "This piece is currently unavailable for online ordering.",
+      "out_of_stock": "This piece is currently out of stock. Please lower the quantity or choose another piece.",
+      "not_enough_stock": "Not enough stock available for this quantity. Please lower the quantity or choose another piece.",
+      "address_not_found": "The selected address could not be found. Please choose or enter another address.",
+      "invalid_phone": "Please enter a valid 10-digit mobile number for this address.",
+      "not_deliverable": "Sorry, we cannot deliver to this address automatically. Please message us on WhatsApp so we can help.",
+      "too_many_requests": "You have too many pending order requests right now. Please wait for the studio to confirm or contact us.",
+      "phone_in_use": "This mobile number is already linked to another account. Please message us on WhatsApp for assistance.",
+      "generic": "Unable to place your order right now. Please try again."
+    },
+    "success": {
+      "title": "Order received - awaiting confirmation from the studio",
+      "duplicateNote": "This order was already placed.",
+      "totalLabel": "Total",
+      "deliveryFeeLabel": "Delivery fee",
+      "zoneLabel": "Delivery zone",
+      "note": "The studio will confirm your order soon. No payment is needed now.",
+      "trackMyOrder": "Track my order",
+      "viewMyOrders": "View my orders",
+      "done": "Done"
     }
   }
 }

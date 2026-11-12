@@ -7,10 +7,11 @@ import type { Product } from '../lib/types'
 import { getOptimizedImageUrl } from '../lib/imageOptimization'
 import { CONTACT_PHONE } from './StorefrontPage'
 import { buildWhatsAppLink, trackEnquiryClick } from '../lib/whatsapp'
-import ProductQuickActions from '../components/ProductQuickActions'
+import { useAuth } from '../lib/AuthContext'
 import LanguageToggle from '../components/LanguageToggle'
 import CustomerAccountControl from '../components/CustomerAccountControl'
-import DeliveryChecker from '../components/DeliveryChecker'
+import DeliveryChecker, { type DeliveryLocationSnapshot } from '../components/DeliveryChecker'
+import OrderRequestModal from '../components/OrderRequestModal'
 
 function formatPrice(price: number): string {
   return Math.round(Number(price)).toLocaleString('en-IN')
@@ -56,6 +57,8 @@ function parseDimensions(value: string): DimensionRow[] | null {
 function ProductDetailPage() {
   const { t, i18n } = useTranslation()
   const { id } = useParams<{ id: string }>()
+  const { user, loading: authLoading, signInWithGoogle } = useAuth()
+  const isCustomerSignInEnabled = import.meta.env.VITE_CUSTOMER_SIGNIN === 'true'
   const [product, setProduct] = useState<Product | null>(null)
   const [images, setImages] = useState<string[]>([])
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
@@ -63,6 +66,10 @@ function ProductDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [openSection, setOpenSection] = useState<string | null>(null)
+  const [deliveryEnabled, setDeliveryEnabled] = useState(true)
+  const [deliverySettingsLoaded, setDeliverySettingsLoaded] = useState(false)
+  const [orderModalOpen, setOrderModalOpen] = useState(false)
+  const [checkerLocation, setCheckerLocation] = useState<DeliveryLocationSnapshot | null>(null)
 
   const fetchProduct = async () => {
     if (!id) {
@@ -113,6 +120,68 @@ function ProductDetailPage() {
   useEffect(() => {
     fetchProduct()
   }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadDeliverySettings() {
+      try {
+        const { data: settingsData } = await supabase
+          .from('shop_settings')
+          .select('delivery_enabled, prep_days, workshop_lat, workshop_lng, workshop_address')
+          .eq('id', 1)
+          .maybeSingle()
+
+        if (cancelled) return
+        if (settingsData && settingsData.delivery_enabled !== undefined && settingsData.delivery_enabled !== null) {
+          setDeliveryEnabled(Boolean(settingsData.delivery_enabled))
+        } else {
+          setDeliveryEnabled(true)
+        }
+      } catch {
+        if (!cancelled) {
+          setDeliveryEnabled(true)
+        }
+      } finally {
+        if (!cancelled) {
+          setDeliverySettingsLoaded(true)
+        }
+      }
+    }
+    void loadDeliverySettings()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isCustomerSignInEnabled || authLoading || !user || !product || !deliverySettingsLoaded) {
+      return
+    }
+    try {
+      const raw = sessionStorage.getItem('atelier_resume_order')
+      if (!raw) return
+      const parsed = JSON.parse(raw) as { productId?: unknown; ts?: unknown }
+      const isExpired =
+        typeof parsed?.ts !== 'number' || Date.now() - parsed.ts >= 30 * 60 * 1000
+      const isMatchingProduct = parsed?.productId === product.id
+
+      if (isExpired || !isMatchingProduct) {
+        sessionStorage.removeItem('atelier_resume_order')
+        return
+      }
+
+      sessionStorage.removeItem('atelier_resume_order')
+      if (deliveryEnabled && product.sold !== true && (product.stock_qty ?? 0) >= 1) {
+        setOrderModalOpen(true)
+      }
+    } catch {
+      try {
+        sessionStorage.removeItem('atelier_resume_order')
+      } catch {
+        // ignore storage errors
+      }
+    }
+  }, [isCustomerSignInEnabled, authLoading, user, product, deliverySettingsLoaded, deliveryEnabled])
 
   const shouldReduceMotion = useReducedMotion()
   const hasDiscount = Boolean(product?.compare_at_price && product.compare_at_price > product.price)
@@ -167,6 +236,23 @@ function ProductDetailPage() {
     window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
   }
 
+  const handleOrderNowClick = () => {
+    if (!product || authLoading) return
+    if (!user) {
+      try {
+        sessionStorage.setItem(
+          'atelier_resume_order',
+          JSON.stringify({ productId: product.id, ts: Date.now() })
+        )
+      } catch {
+        // ignore storage errors
+      }
+      void signInWithGoogle()
+      return
+    }
+    setOrderModalOpen(true)
+  }
+
   if (loading) {
     return <main className="min-h-screen bg-[#FAF7F2] flex items-center justify-center font-inter text-sm text-[#6B7259]">Loading piece...</main>
   }
@@ -209,7 +295,7 @@ function ProductDetailPage() {
           <div className="flex items-center gap-3">
             <CustomerAccountControl />
             <LanguageToggle />
-            <Link to="/#collection" className="text-[10px] sm:text-xs font-inter font-semibold uppercase tracking-widest text-[#6B7259] hover:text-[#B8874B]">
+            <Link to="/#collection" className="hidden sm:inline-block text-[10px] sm:text-xs font-inter font-semibold uppercase tracking-widest text-[#6B7259] hover:text-[#B8874B]">
               {t('productDetail.backToCollection')}
             </Link>
           </div>
@@ -386,18 +472,47 @@ function ProductDetailPage() {
               })}
             </div>
 
-            <div className="flex flex-wrap items-center gap-4 pt-6">
-              <button
-                type="button"
-                onClick={enquireOnWhatsApp}
-                className="w-full sm:w-auto inline-flex items-center justify-center px-7 py-4 bg-[#4A3728] text-[#FAF7F2] font-inter text-xs font-semibold uppercase tracking-widest hover:bg-[#B8874B] transition-colors duration-300"
-              >
-                {t('productDetail.enquireOnWhatsApp')}
-              </button>
-              <ProductQuickActions product={product} phone={CONTACT_PHONE} contactActions={false} />
-            </div>
+            {(() => {
+              const isProductAvailable = product.sold !== true && (product.stock_qty ?? 0) >= 1
+              const canShowOrderNow =
+                isCustomerSignInEnabled && deliverySettingsLoaded && deliveryEnabled && isProductAvailable
+              const showOutOfStockNote = isCustomerSignInEnabled && !isProductAvailable
 
-            <DeliveryChecker product={product} />
+              return (
+                <div className="pt-6 space-y-2.5">
+                  {showOutOfStockNote && (
+                    <p className="font-inter text-xs font-semibold uppercase tracking-wider text-[#8A5F25]">
+                      {t('productDetail.outOfStock')}
+                    </p>
+                  )}
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-3 sm:gap-4">
+                    {canShowOrderNow && (
+                      <button
+                        type="button"
+                        onClick={handleOrderNowClick}
+                        disabled={authLoading}
+                        className="w-full sm:w-auto inline-flex items-center justify-center px-7 py-4 bg-[#4A3728] text-[#FAF7F2] font-inter text-xs font-semibold uppercase tracking-widest hover:bg-[#B8874B] transition-colors duration-300 disabled:opacity-60 cursor-pointer"
+                      >
+                        {t('productDetail.orderNow')}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={enquireOnWhatsApp}
+                      className={
+                        canShowOrderNow
+                          ? 'w-full sm:w-auto inline-flex items-center justify-center px-7 py-4 border border-[#4A3728] text-[#4A3728] bg-transparent font-inter text-xs font-semibold uppercase tracking-widest hover:bg-[#4A3728] hover:text-[#FAF7F2] transition-colors duration-300 cursor-pointer'
+                          : 'w-full sm:w-auto inline-flex items-center justify-center px-7 py-4 bg-[#4A3728] text-[#FAF7F2] font-inter text-xs font-semibold uppercase tracking-widest hover:bg-[#B8874B] transition-colors duration-300 cursor-pointer'
+                      }
+                    >
+                      {t('productDetail.enquireOnWhatsApp')}
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
+
+            <DeliveryChecker product={product} onLocationChange={setCheckerLocation} />
           </div>
         </div>
       </section>
@@ -433,6 +548,16 @@ function ProductDetailPage() {
           </p>
         </div>
       </footer>
+
+      {orderModalOpen && user && (
+        <OrderRequestModal
+          product={product}
+          user={user}
+          initialLocation={checkerLocation}
+          onClose={() => setOrderModalOpen(false)}
+          onEnquireWhatsApp={enquireOnWhatsApp}
+        />
+      )}
     </main>
   )
 }

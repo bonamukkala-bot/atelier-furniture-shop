@@ -12,8 +12,17 @@ import {
   type NominatimPlace,
 } from '../lib/nominatim'
 
+export interface DeliveryLocationSnapshot {
+  latitude: number | null
+  longitude: number | null
+  pincode: string
+  resolvedAddress: string
+  selectedAddressId: string | null
+}
+
 interface DeliveryCheckerProps {
   product: Product
+  onLocationChange?: (loc: DeliveryLocationSnapshot) => void
 }
 
 interface CheckResult {
@@ -31,9 +40,11 @@ function formatPrice(price: number): string {
   return Math.round(Number(price)).toLocaleString('en-IN')
 }
 
-export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
+export default function DeliveryChecker({ product, onLocationChange }: DeliveryCheckerProps) {
   const { user } = useAuth()
   const { showToast } = useToast()
+  const onLocationChangeRef = useRef(onLocationChange)
+  onLocationChangeRef.current = onLocationChange
 
   // ── Shop settings & zones ──
   const [deliveryEnabled, setDeliveryEnabled] = useState<boolean | null>(null)
@@ -101,6 +112,16 @@ export default function DeliveryChecker({ product }: DeliveryCheckerProps) {
       }
     }
   }, [user])
+
+  useEffect(() => {
+    onLocationChangeRef.current?.({
+      latitude,
+      longitude,
+      pincode: pincodeInput,
+      resolvedAddress,
+      selectedAddressId,
+    })
+  }, [latitude, longitude, pincodeInput, resolvedAddress, selectedAddressId])
 
   // ── Initial load: shop_settings & delivery_zones ──
   useEffect(() => {
