@@ -21,3 +21,8 @@ entrypoint = "./functions/chat-bot-health/index.ts"
 enabled = true
 verify_jwt = false
 entrypoint = "./functions/voice-order-status/index.ts"
+
+[functions.voice-product-info]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/voice-product-info/index.ts"
